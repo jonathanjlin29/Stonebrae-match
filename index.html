@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Nassau Golf v1779602680138 -->
+<!-- Nassau Golf v1779649418560 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -33,7 +33,7 @@
 </head>
 <body>
   <div id="root"></div>
-  <script>/* v1779602680138 *//**
+  <script>/* v1779649418560 *//**
  * @license React
  * react.production.min.js
  *
@@ -1175,6 +1175,14 @@ function GameScreen(_ref2) {
     _useState24 = _slicedToArray(_useState23, 2),
     shownAutoPress = _useState24[0],
     setShownAutoPress = _useState24[1];
+  var _useState25 = useState(null),
+    _useState26 = _slicedToArray(_useState25, 2),
+    editingPressId = _useState26[0],
+    setEditingPressId = _useState26[1];
+  var _useState27 = useState(""),
+    _useState28 = _slicedToArray(_useState27, 2),
+    editingPressAmount = _useState28[0],
+    setEditingPressAmount = _useState28[1];
   var autoPressAlerts = [];
   if (autoPressEnabled) {
     matches.forEach(function (m) {
@@ -1264,6 +1272,17 @@ function GameScreen(_ref2) {
   };
 
   // Leaderboard data
+  var updatePressAmount = function updatePressAmount(pressId, newAmount) {
+    setPresses(function (prev) {
+      return prev.map(function (p) {
+        return p.id === pressId ? _objectSpread(_objectSpread({}, p), {}, {
+          betAmount: parseFloat(newAmount) || 0
+        }) : p;
+      });
+    });
+    setEditingPressId(null);
+    setEditingPressAmount("");
+  };
   var leaderboard = initPlayers.map(function (p) {
     var lockedTotal = completedHoles.reduce(function (acc, h) {
       var s = scores[p.id][h];
@@ -2101,22 +2120,42 @@ function GameScreen(_ref2) {
         var statusA = last ? last.statusA : 0;
         var hp = results.length;
         var sc = hp === 0 ? "not-started" : statusA > 0 ? "up" : statusA < 0 ? "down" : "halved";
+        var isEditing = editingPressId === press.id;
         return /*#__PURE__*/React.createElement("div", {
           key: pm.id,
           className: "match-status-card press ".concat(sc),
           style: {
             flex: '1 1 140px',
             minWidth: 140,
-            padding: '10px 12px'
+            padding: '10px 12px',
+            cursor: 'pointer'
+          },
+          onClick: function onClick() {
+            if (!isEditing) {
+              setEditingPressId(press.id);
+              setEditingPressAmount(String(press.betAmount || ""));
+            }
+          }
+        }, /*#__PURE__*/React.createElement("div", {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 4
           }
         }, /*#__PURE__*/React.createElement("span", {
           className: "match-tag press",
           style: {
-            marginBottom: 4,
-            display: 'inline-block',
             fontSize: '0.65rem'
           }
-        }, "PRESS"), /*#__PURE__*/React.createElement("div", {
+        }, "PRESS"), /*#__PURE__*/React.createElement("span", {
+          style: {
+            fontSize: '0.7rem',
+            color: COLORS.gold,
+            fontFamily: 'JetBrains Mono',
+            fontWeight: 700
+          }
+        }, "$", press.betAmount || 0)), /*#__PURE__*/React.createElement("div", {
           style: {
             fontSize: '0.72rem',
             color: COLORS.muted,
@@ -2151,7 +2190,86 @@ function GameScreen(_ref2) {
               fontFamily: 'JetBrains Mono'
             }
           }, r.hole + 1);
-        })));
+        })), isEditing && /*#__PURE__*/React.createElement("div", {
+          style: {
+            marginTop: 10,
+            paddingTop: 10,
+            borderTop: "1px solid ".concat(COLORS.cardBorder)
+          },
+          onClick: function onClick(e) {
+            return e.stopPropagation();
+          }
+        }, /*#__PURE__*/React.createElement("div", {
+          style: {
+            fontSize: '0.72rem',
+            color: COLORS.muted,
+            marginBottom: 6
+          }
+        }, "Adjust bet amount:"), /*#__PURE__*/React.createElement("div", {
+          style: {
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center'
+          }
+        }, /*#__PURE__*/React.createElement("div", {
+          style: {
+            position: 'relative',
+            flex: 1
+          }
+        }, /*#__PURE__*/React.createElement("span", {
+          style: {
+            position: 'absolute',
+            left: 8,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: COLORS.muted,
+            fontSize: '0.85rem'
+          }
+        }, "$"), /*#__PURE__*/React.createElement("input", {
+          type: "number",
+          inputMode: "decimal",
+          step: "0.01",
+          min: "0",
+          autoFocus: true,
+          value: editingPressAmount,
+          onChange: function onChange(e) {
+            return setEditingPressAmount(e.target.value);
+          },
+          style: {
+            paddingLeft: 20,
+            fontSize: '0.9rem',
+            height: 36,
+            width: '100%',
+            borderColor: COLORS.pressColor
+          }
+        })), /*#__PURE__*/React.createElement("button", {
+          className: "btn btn-purple btn-sm",
+          style: {
+            height: 36,
+            whiteSpace: 'nowrap',
+            flexShrink: 0
+          },
+          onClick: function onClick() {
+            return updatePressAmount(press.id, editingPressAmount);
+          }
+        }, "\u2713 Save"), /*#__PURE__*/React.createElement("button", {
+          className: "btn btn-outline btn-sm",
+          style: {
+            height: 36,
+            flexShrink: 0
+          },
+          onClick: function onClick() {
+            setEditingPressId(null);
+            setEditingPressAmount("");
+          }
+        }, "\u2715"))), !isEditing && /*#__PURE__*/React.createElement("div", {
+          style: {
+            marginTop: 6,
+            fontSize: '0.65rem',
+            color: COLORS.pressColor,
+            opacity: 0.7
+          }
+        }, "Tap to adjust amount"));
       })));
     }
   }), matches.length > 0 && completedHoles.length === 0 && /*#__PURE__*/React.createElement("div", {
@@ -2495,21 +2613,21 @@ function clearAllStorage() {
   });
 }
 function App() {
-  var _useState25 = useState(function () {
+  var _useState29 = useState(function () {
       var saved = localStorage.getItem('nassau-gameState');
       if (saved) try {
         return JSON.parse(saved);
       } catch (e) {}
       return null;
     }),
-    _useState26 = _slicedToArray(_useState25, 2),
-    gameState = _useState26[0],
-    setGameState = _useState26[1];
+    _useState30 = _slicedToArray(_useState29, 2),
+    gameState = _useState30[0],
+    setGameState = _useState30[1];
   // Changing resetKey forces GameScreen to fully remount with blank state
-  var _useState27 = useState(0),
-    _useState28 = _slicedToArray(_useState27, 2),
-    resetKey = _useState28[0],
-    setResetKey = _useState28[1];
+  var _useState31 = useState(0),
+    _useState32 = _slicedToArray(_useState31, 2),
+    resetKey = _useState32[0],
+    setResetKey = _useState32[1];
   var doReset = function doReset() {
     clearAllStorage();
     setGameState(null);
