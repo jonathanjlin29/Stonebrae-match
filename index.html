@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Nassau Golf v1780550307988 -->
+<!-- Nassau Golf v1780550699818 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -55,7 +55,7 @@
 </head>
 <body>
   <div id="root"></div>
-  <script>/* v1780550307988 *//**
+  <script>/* v1780550699818 *//**
  * @license React
  * react.production.min.js
  *
@@ -2920,10 +2920,13 @@ function GameScreen(_ref2) {
       var parts = net.split(':');
       if (parts.length < 2) return;
       var name = parts[0].trim();
-      // parseFloat handles the sign correctly on its own — no extra multiplication needed
+      // Parse as integer: extract digits then apply sign from original string
       var rawVal = parts[1].trim(); // e.g. "+$50" or "-$30" or "$0.00"
-      var amt = parseFloat(rawVal.replace(/[^0-9.-]/g, '')) * (rawVal.includes('-') ? -1 : 1);
-      if (!isNaN(amt)) playerTotals[name] = (playerTotals[name] || 0) + amt;
+      // Extract integer: remove all non-digit chars, then apply sign
+      var digits = rawVal.replace(/[^0-9]/g, '');
+      var sign = rawVal.includes('-') ? -1 : 1;
+      var amt = parseInt(digits, 10) * sign;
+      if (!isNaN(amt)) playerTotals[name] = (playerTotals[name] || 0) + amt; // integers now
     });
     return /*#__PURE__*/React.createElement("div", {
       style: {
@@ -2964,7 +2967,7 @@ function GameScreen(_ref2) {
           fontWeight: 700,
           color: total > 0 ? COLORS.green : total < 0 ? COLORS.red : COLORS.muted
         }
-      }, total > 0 ? '+' : '', total.toFixed(2)));
+      }, total > 0 ? '+' : '', Number.isInteger(total) ? total : total.toFixed(2)));
     }));
   }(), !historyLoading && history.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
