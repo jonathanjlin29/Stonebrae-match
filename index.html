@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Nassau Golf v1780551219707 -->
+<!-- Nassau Golf v1780551481577 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -55,7 +55,7 @@
 </head>
 <body>
   <div id="root"></div>
-  <script>/* v1780551219707 *//**
+  <script>/* v1780551481577 *//**
  * @license React
  * react.production.min.js
  *
@@ -357,7 +357,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
 </script>
   <script>var useState=React.useState,useEffect=React.useEffect,useCallback=React.useCallback;
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
-var _excluded = ["_storageIdx"];
+var _excluded = ["_storageIdx"],
+  _excluded2 = ["_storageIdx"];
 function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a = !0, u = !1; return { s: function s() { t = t.call(r); }, n: function n() { var r = t.next(); return a = r.done, r; }, e: function e(r) { u = !0, o = r; }, f: function f() { try { a || null == t.return || t.return(); } finally { if (u) throw o; } } }; }
 function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
 function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
@@ -3233,22 +3234,446 @@ function clearAllStorage() {
     return localStorage.removeItem(k);
   });
 }
-function App() {
+
+// ─── HISTORY HELPERS ─────────────────────────────────────────────────────────
+function loadHistoryFromStorage() {
+  try {
+    var saved = localStorage.getItem('nassau-history');
+    return saved ? JSON.parse(saved) : [];
+  } catch (e) {
+    return [];
+  }
+}
+function parseNetAmount(rawVal) {
+  var match = rawVal.match(/-?[\d]+\.?[\d]*/);
+  if (!match) return 0;
+  var sign = rawVal.includes('-') ? -1 : 1;
+  return Math.round(parseFloat(match[0]) * sign);
+}
+function HistoryTab() {
   var _useState49 = useState(function () {
+      return _toConsumableArray(loadHistoryFromStorage()).reverse();
+    }),
+    _useState50 = _slicedToArray(_useState49, 2),
+    history = _useState50[0],
+    setHistory = _useState50[1];
+  var _useState51 = useState(null),
+    _useState52 = _slicedToArray(_useState51, 2),
+    editingIdx = _useState52[0],
+    setEditingIdx = _useState52[1];
+  var _useState53 = useState(null),
+    _useState54 = _slicedToArray(_useState53, 2),
+    editingData = _useState54[0],
+    setEditingData = _useState54[1];
+  var _useState55 = useState(false),
+    _useState56 = _slicedToArray(_useState55, 2),
+    importingFromSheets = _useState56[0],
+    setImportingFromSheets = _useState56[1];
+  var _useState57 = useState(null),
+    _useState58 = _slicedToArray(_useState57, 2),
+    importStatus = _useState58[0],
+    setImportStatus = _useState58[1];
+  var deleteRound = function deleteRound(displayIdx) {
+    var stored = loadHistoryFromStorage();
+    var storageIdx = stored.length - 1 - displayIdx;
+    stored.splice(storageIdx, 1);
+    localStorage.setItem('nassau-history', JSON.stringify(stored));
+    setHistory(_toConsumableArray(stored).reverse());
+  };
+  var startEdit = function startEdit(displayIdx) {
+    var stored = loadHistoryFromStorage();
+    var storageIdx = stored.length - 1 - displayIdx;
+    setEditingIdx(displayIdx);
+    setEditingData(_objectSpread(_objectSpread({}, stored[storageIdx]), {}, {
+      _storageIdx: storageIdx
+    }));
+  };
+  var saveEdit = function saveEdit() {
+    if (!editingData) return;
+    var stored = loadHistoryFromStorage();
+    var _storageIdx = editingData._storageIdx,
+      roundData = _objectWithoutProperties(editingData, _excluded2);
+    stored[_storageIdx] = roundData;
+    localStorage.setItem('nassau-history', JSON.stringify(stored));
+    setHistory(_toConsumableArray(stored).reverse());
+    setEditingIdx(null);
+    setEditingData(null);
+  };
+  var importFromSheets = function importFromSheets() {
+    setImportingFromSheets(true);
+    setImportStatus(null);
+    var callbackName = 'nassauImportCb_' + Date.now();
+    var script = document.createElement('script');
+    var timeout = setTimeout(function () {
+      setImportingFromSheets(false);
+      setImportStatus('error');
+      delete window[callbackName];
+      script.remove();
+    }, 12000);
+    window[callbackName] = function (data) {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      script.remove();
+      if (data.success && data.rounds) {
+        var norm = data.rounds.map(function (r) {
+          return {
+            date: r.date || r['Date'] || '',
+            course: r.course || r['Course'] || '',
+            players: r.players || r['Players'] || '',
+            matchResults: r.matchResults || r['Match Results'] || '',
+            netMoney: r.netMoney || r['Net Money'] || '',
+            winner: r.winner || r['Winner'] || '',
+            notes: r.notes || r['Notes'] || ''
+          };
+        });
+        var existing = loadHistoryFromStorage();
+        var existingKeys = new Set(existing.map(function (r) {
+          return r.date + '|' + r.players;
+        }));
+        var newRounds = norm.filter(function (r) {
+          return !existingKeys.has(r.date + '|' + r.players);
+        });
+        var merged = [].concat(_toConsumableArray(existing), _toConsumableArray(newRounds));
+        localStorage.setItem('nassau-history', JSON.stringify(merged));
+        setHistory(_toConsumableArray(merged).reverse());
+        setImportStatus(newRounds.length > 0 ? 'success' : 'empty');
+      } else {
+        setImportStatus('error');
+      }
+      setImportingFromSheets(false);
+    };
+    script.onerror = function () {
+      clearTimeout(timeout);
+      setImportStatus('error');
+      setImportingFromSheets(false);
+      delete window[callbackName];
+    };
+    script.src = SCRIPT_URL + '?callback=' + callbackName;
+    document.head.appendChild(script);
+  };
+  var allNets = history.flatMap(function (r) {
+    return (r.netMoney || r['Net Money'] || '').split(', ');
+  });
+  var playerTotals = {};
+  allNets.forEach(function (net) {
+    var parts = net.split(':');
+    if (parts.length < 2) return;
+    var name = parts[0].trim();
+    var amt = parseNetAmount(parts[1].trim());
+    if (!isNaN(amt)) playerTotals[name] = (playerTotals[name] || 0) + amt;
+  });
+  return /*#__PURE__*/React.createElement("div", {
+    className: "card"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "card-title"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCC8"), " Round History"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-outline btn-sm",
+    style: {
+      width: '100%',
+      padding: '10px',
+      fontSize: '0.85rem',
+      borderColor: COLORS.accent + '66',
+      color: COLORS.accent,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8
+    },
+    onClick: importFromSheets,
+    disabled: importingFromSheets
+  }, importingFromSheets ? '⏳ Loading from Google Sheets...' : '☁️ Import from Google Sheets'), importStatus === 'success' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6,
+      padding: '6px 10px',
+      background: 'rgba(46,204,113,0.12)',
+      borderRadius: 6,
+      color: COLORS.green,
+      fontSize: '0.8rem',
+      textAlign: 'center'
+    }
+  }, "\u2713 New rounds imported!"), importStatus === 'empty' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6,
+      padding: '6px 10px',
+      background: COLORS.surface,
+      borderRadius: 6,
+      color: COLORS.muted,
+      fontSize: '0.8rem',
+      textAlign: 'center'
+    }
+  }, "Already up to date."), importStatus === 'error' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6,
+      padding: '6px 10px',
+      background: 'rgba(231,76,60,0.12)',
+      borderRadius: 6,
+      color: COLORS.red,
+      fontSize: '0.8rem',
+      textAlign: 'center'
+    }
+  }, "\u2717 Could not reach Google Sheets.")), Object.keys(playerTotals).length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12,
+      padding: '10px 12px',
+      background: COLORS.surface,
+      borderRadius: 8,
+      border: "1px solid ".concat(COLORS.cardBorder)
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: 'Bebas Neue, cursive',
+      fontSize: '0.9rem',
+      letterSpacing: 2,
+      color: COLORS.accent,
+      marginBottom: 6
+    }
+  }, "ALL TIME"), Object.entries(playerTotals).map(function (_ref9) {
+    var _ref0 = _slicedToArray(_ref9, 2),
+      name = _ref0[0],
+      total = _ref0[1];
+    return /*#__PURE__*/React.createElement("div", {
+      key: name,
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontSize: '0.85rem',
+        padding: '2px 0'
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: COLORS.text,
+        fontWeight: 600
+      }
+    }, name), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontFamily: 'JetBrains Mono',
+        fontWeight: 700,
+        color: total > 0 ? COLORS.green : total < 0 ? COLORS.red : COLORS.muted
+      }
+    }, total > 0 ? '+$' : total < 0 ? '-$' : '$', Math.abs(total)));
+  })), history.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: 'center',
+      padding: '30px 0',
+      color: COLORS.muted
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '2.5rem',
+      marginBottom: 8
+    }
+  }, "\uD83D\uDCCB"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '0.85rem'
+    }
+  }, "No rounds saved yet.")), history.map(function (round, i) {
+    var nets = (round.netMoney || round['Net Money'] || '').split(', ');
+    var isEditing = editingIdx === i;
+    return /*#__PURE__*/React.createElement("div", {
+      key: i,
+      style: {
+        padding: '12px',
+        background: COLORS.surface,
+        borderRadius: 8,
+        marginBottom: 8,
+        border: "1px solid ".concat(isEditing ? COLORS.accent : COLORS.cardBorder)
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 6
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontFamily: 'Bebas Neue, cursive',
+        fontSize: '1rem',
+        letterSpacing: 2,
+        color: COLORS.text
+      }
+    }, round.date || round['Date']), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 4
+      }
+    }, !isEditing && /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-sm btn-outline",
+      style: {
+        padding: '2px 7px',
+        fontSize: '0.7rem',
+        color: COLORS.accent,
+        borderColor: COLORS.accent + '55'
+      },
+      onClick: function onClick() {
+        return startEdit(i);
+      }
+    }, "\u270F\uFE0F"), /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-sm btn-danger",
+      style: {
+        padding: '2px 7px',
+        fontSize: '0.7rem'
+      },
+      onClick: function onClick() {
+        return deleteRound(i);
+      }
+    }, "\uD83D\uDDD1"))), !isEditing ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: '0.78rem',
+        color: COLORS.muted,
+        marginBottom: 4
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontWeight: 600,
+        color: COLORS.text
+      }
+    }, round.players || round['Players']), (round.notes || round['Notes']) && /*#__PURE__*/React.createElement("span", {
+      style: {
+        marginLeft: 8
+      }
+    }, round.notes || round['Notes'])), (round.winner || round['Winner']) && (round.winner || round['Winner']) !== 'All Square' && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginBottom: 6,
+        padding: '3px 8px',
+        background: 'rgba(46,204,113,0.12)',
+        borderRadius: 4,
+        display: 'inline-block',
+        fontSize: '0.75rem',
+        color: COLORS.green,
+        fontWeight: 600
+      }
+    }, "\uD83C\uDFC6 ", round.winner || round['Winner']), /*#__PURE__*/React.createElement("div", {
+      style: {
+        borderTop: "1px solid ".concat(COLORS.cardBorder),
+        paddingTop: 6,
+        marginTop: 4
+      }
+    }, nets.map(function (net, j) {
+      var rawVal = (net.split(':')[1] || '').trim();
+      var isNeg = rawVal.includes('-');
+      var isPos = rawVal.includes('+');
+      return /*#__PURE__*/React.createElement("div", {
+        key: j,
+        style: {
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: '0.8rem',
+          padding: '1px 0'
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          color: COLORS.text
+        }
+      }, net.split(':')[0]), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontFamily: 'JetBrains Mono',
+          fontWeight: 700,
+          color: isPos ? COLORS.green : isNeg ? COLORS.red : COLORS.muted
+        }
+      }, rawVal));
+    }))) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginBottom: 6
+      }
+    }, /*#__PURE__*/React.createElement("label", null, "Date"), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      value: editingData.date || '',
+      onChange: function onChange(e) {
+        return setEditingData(function (d) {
+          return _objectSpread(_objectSpread({}, d), {}, {
+            date: e.target.value
+          });
+        });
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginBottom: 6
+      }
+    }, /*#__PURE__*/React.createElement("label", null, "Winner"), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      value: editingData.winner || '',
+      onChange: function onChange(e) {
+        return setEditingData(function (d) {
+          return _objectSpread(_objectSpread({}, d), {}, {
+            winner: e.target.value
+          });
+        });
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginBottom: 6
+      }
+    }, /*#__PURE__*/React.createElement("label", null, "Net Money"), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      value: editingData.netMoney || '',
+      onChange: function onChange(e) {
+        return setEditingData(function (d) {
+          return _objectSpread(_objectSpread({}, d), {}, {
+            netMoney: e.target.value
+          });
+        });
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginBottom: 8
+      }
+    }, /*#__PURE__*/React.createElement("label", null, "Notes"), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      value: editingData.notes || '',
+      onChange: function onChange(e) {
+        return setEditingData(function (d) {
+          return _objectSpread(_objectSpread({}, d), {}, {
+            notes: e.target.value
+          });
+        });
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 6
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-green btn-sm",
+      style: {
+        flex: 1
+      },
+      onClick: saveEdit
+    }, "\u2713 Save"), /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-outline btn-sm",
+      style: {
+        flex: 1
+      },
+      onClick: function onClick() {
+        setEditingIdx(null);
+        setEditingData(null);
+      }
+    }, "Cancel"))));
+  }));
+}
+function App() {
+  var _useState59 = useState(function () {
       var saved = localStorage.getItem('nassau-gameState');
       if (saved) try {
         return JSON.parse(saved);
       } catch (e) {}
       return null;
     }),
-    _useState50 = _slicedToArray(_useState49, 2),
-    gameState = _useState50[0],
-    setGameState = _useState50[1];
-  // Changing resetKey forces GameScreen to fully remount with blank state
-  var _useState51 = useState(0),
-    _useState52 = _slicedToArray(_useState51, 2),
-    resetKey = _useState52[0],
-    setResetKey = _useState52[1];
+    _useState60 = _slicedToArray(_useState59, 2),
+    gameState = _useState60[0],
+    setGameState = _useState60[1];
+  var _useState61 = useState('setup'),
+    _useState62 = _slicedToArray(_useState61, 2),
+    setupTab = _useState62[0],
+    setSetupTab = _useState62[1];
+  var _useState63 = useState(0),
+    _useState64 = _slicedToArray(_useState63, 2),
+    resetKey = _useState64[0],
+    setResetKey = _useState64[1];
   var doReset = function doReset() {
     clearAllStorage();
     setGameState(null);
@@ -3260,7 +3685,30 @@ function App() {
     className: "app"
   }, /*#__PURE__*/React.createElement("style", null, css), /*#__PURE__*/React.createElement("div", {
     className: "header"
-  }, /*#__PURE__*/React.createElement("h1", null, "NASSAU ", /*#__PURE__*/React.createElement("span", null, "GOLF")), /*#__PURE__*/React.createElement("p", null, "Black Tees \xB7 Match Play Tracker")), gameState === null ? /*#__PURE__*/React.createElement(SetupScreen, {
+  }, /*#__PURE__*/React.createElement("h1", null, "NASSAU ", /*#__PURE__*/React.createElement("span", null, "GOLF")), /*#__PURE__*/React.createElement("p", null, "Match Play Tracker")), gameState === null ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "tabs",
+    style: {
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "tab ".concat(setupTab === 'setup' ? 'active' : ''),
+    onClick: function onClick() {
+      return setSetupTab('setup');
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tab-icon"
+  }, "\u26F3"), /*#__PURE__*/React.createElement("span", {
+    className: "tab-label"
+  }, "New Round")), /*#__PURE__*/React.createElement("button", {
+    className: "tab ".concat(setupTab === 'history' ? 'active' : ''),
+    onClick: function onClick() {
+      return setSetupTab('history');
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tab-icon"
+  }, "\uD83D\uDCC8"), /*#__PURE__*/React.createElement("span", {
+    className: "tab-label"
+  }, "History"))), setupTab === 'setup' ? /*#__PURE__*/React.createElement(SetupScreen, {
     onStart: function onStart(players, matches, autoPressEnabled) {
       var state = {
         players: players,
@@ -3270,7 +3718,7 @@ function App() {
       setGameState(state);
       localStorage.setItem('nassau-gameState', JSON.stringify(state));
     }
-  }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }) : /*#__PURE__*/React.createElement(HistoryTab, null)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 12,
       display: 'flex',
