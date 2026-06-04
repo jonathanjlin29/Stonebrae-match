@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Nassau Golf v1780550898215 -->
+<!-- Nassau Golf v1780551219707 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -55,7 +55,7 @@
 </head>
 <body>
   <div id="root"></div>
-  <script>/* v1780550898215 *//**
+  <script>/* v1780551219707 *//**
  * @license React
  * react.production.min.js
  *
@@ -751,8 +751,8 @@ function SetupScreen(_ref) {
         teamA: _toConsumableArray(teamA),
         teamB: _toConsumableArray(teamB),
         name: "".concat(nameA, " vs ").concat(nameB),
-        nineBet: parseFloat(nineBet) || 0,
-        totalBet: parseFloat(totalBet) || 0,
+        nineBet: parseInt(nineBet, 10) || 0,
+        totalBet: parseInt(totalBet, 10) || 0,
         presses: []
       }]);
     });
@@ -1300,7 +1300,7 @@ function GameScreen(_ref2) {
     var scopeLabel = scope === "front" ? " (Front 9)" : scope === "back" ? " (Back 9)" : "";
 
     // Use the bet amount from the scope (front/back) or the provided pressBet
-    var betAmount = parseFloat(pressBet) || 0;
+    var betAmount = parseInt(pressBet, 10) || 0;
     if (!pressBet) {
       betAmount = scope === "overall" ? baseMatch.totalBet : baseMatch.nineBet;
     }
@@ -1348,7 +1348,7 @@ function GameScreen(_ref2) {
     setPresses(function (prev) {
       return prev.map(function (p) {
         return p.id === pressId ? _objectSpread(_objectSpread({}, p), {}, {
-          betAmount: parseFloat(newAmount) || 0
+          betAmount: parseInt(newAmount, 10) || 0
         }) : p;
       });
     });
@@ -1371,7 +1371,7 @@ function GameScreen(_ref2) {
               }); // Build player money summary
               playerSummary = initPlayers.map(function (p) {
                 var bal = playerBalances[p.id] || 0;
-                var str = bal >= 0 ? "+$".concat(bal.toFixed(2)) : "-$".concat(Math.abs(bal).toFixed(2));
+                var str = bal >= 0 ? "+$".concat(Math.round(bal)) : "-$".concat(Math.round(Math.abs(bal)));
                 return "".concat(p.name, ": ").concat(str);
               }).join(', '); // Find overall winner (most positive balance)
               winner = initPlayers.reduce(function (best, p) {
@@ -1842,7 +1842,7 @@ function GameScreen(_ref2) {
       transactions.push({
         from: debtor.id,
         to: creditor.id,
-        amount: Math.round(amount * 100) / 100
+        amount: Math.round(amount)
       });
       creditor.amount -= amount;
       debtor.amount -= amount;
@@ -2615,7 +2615,7 @@ function GameScreen(_ref2) {
   }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCB0"), " Player Balances"), initPlayers.map(function (p) {
     var balance = playerBalances[p.id] || 0;
     var balanceClass = balance > 0 ? "text-green" : balance < 0 ? "text-red" : "";
-    var balanceStr = balance > 0 ? "+$".concat(balance.toFixed(2)) : balance < 0 ? "-$".concat(Math.abs(balance).toFixed(2)) : "$0.00";
+    var balanceStr = balance > 0 ? "+$".concat(Math.round(balance)) : balance < 0 ? "-$".concat(Math.round(Math.abs(balance))) : "$0";
     return /*#__PURE__*/React.createElement("div", {
       key: p.id,
       style: {
@@ -2698,7 +2698,7 @@ function GameScreen(_ref2) {
         color: COLORS.gold,
         fontWeight: 700
       }
-    }, "$", result.amount.toFixed(2)), result.closedOut && result.closeReason && /*#__PURE__*/React.createElement("span", {
+    }, "$", Math.round(result.amount)), result.closedOut && result.closeReason && /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: '0.7rem',
         background: COLORS.green + '22',
@@ -2757,7 +2757,7 @@ function GameScreen(_ref2) {
         fontWeight: 700,
         color: COLORS.gold
       }
-    }, "$", txn.amount.toFixed(2)));
+    }, "$", Math.round(txn.amount)));
   })), moneyResults.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2922,10 +2922,9 @@ function GameScreen(_ref2) {
       var name = parts[0].trim();
       // Parse as integer: extract digits then apply sign from original string
       var rawVal = parts[1].trim(); // e.g. "+$50" or "-$30" or "$0.00"
-      // Extract integer: remove all non-digit chars, then apply sign
-      var digits = rawVal.replace(/[^0-9]/g, '');
-      var sign = rawVal.includes('-') ? -1 : 1;
-      var amt = parseInt(digits, 10) * sign;
+      // Parse dollar amount: extract numeric value with sign using regex
+      var match = rawVal.match(/-?[\d]+\.?[\d]*/);
+      var amt = match ? parseFloat(match[0]) * (rawVal.includes('-') ? -1 : 1) : 0;
       if (!isNaN(amt)) playerTotals[name] = (playerTotals[name] || 0) + amt; // integers now
     });
     return /*#__PURE__*/React.createElement("div", {
@@ -2967,7 +2966,7 @@ function GameScreen(_ref2) {
           fontWeight: 700,
           color: total > 0 ? COLORS.green : total < 0 ? COLORS.red : COLORS.muted
         }
-      }, total > 0 ? '+$' : total < 0 ? '-$' : '$', Math.abs(total).toFixed(2)));
+      }, total > 0 ? '+$' : total < 0 ? '-$' : '$', Math.abs(Math.round(total))));
     }));
   }(), !historyLoading && history.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
