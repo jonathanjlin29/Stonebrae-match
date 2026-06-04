@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Nassau Golf v1780549938461 -->
+<!-- Nassau Golf v1780550307988 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -55,7 +55,7 @@
 </head>
 <body>
   <div id="root"></div>
-  <script>/* v1780549938461 *//**
+  <script>/* v1780550307988 *//**
  * @license React
  * react.production.min.js
  *
@@ -1247,6 +1247,14 @@ function GameScreen(_ref2) {
     _useState44 = _slicedToArray(_useState43, 2),
     editingRoundData = _useState44[0],
     setEditingRoundData = _useState44[1];
+  var _useState45 = useState(false),
+    _useState46 = _slicedToArray(_useState45, 2),
+    importingFromSheets = _useState46[0],
+    setImportingFromSheets = _useState46[1];
+  var _useState47 = useState(null),
+    _useState48 = _slicedToArray(_useState47, 2),
+    importStatus = _useState48[0],
+    setImportStatus = _useState48[1];
   var autoPressAlerts = [];
   if (autoPressEnabled) {
     matches.forEach(function (m) {
@@ -1425,6 +1433,58 @@ function GameScreen(_ref2) {
     } catch (e) {
       setHistory([]);
     }
+  };
+  var importFromSheets = function importFromSheets() {
+    setImportingFromSheets(true);
+    setImportStatus(null);
+    var callbackName = 'nassauImportCallback_' + Date.now();
+    var script = document.createElement('script');
+    var timeout = setTimeout(function () {
+      setImportingFromSheets(false);
+      setImportStatus('error');
+      delete window[callbackName];
+      script.remove();
+    }, 12000);
+    window[callbackName] = function (data) {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      script.remove();
+      if (data.success && data.rounds) {
+        var normalised = data.rounds.map(function (r) {
+          return {
+            date: r.date || r['Date'] || '',
+            course: r.course || r['Course'] || '',
+            players: r.players || r['Players'] || '',
+            matchResults: r.matchResults || r['Match Results'] || '',
+            netMoney: r.netMoney || r['Net Money'] || '',
+            winner: r.winner || r['Winner'] || '',
+            notes: r.notes || r['Notes'] || ''
+          };
+        });
+        var existing = JSON.parse(localStorage.getItem('nassau-history') || '[]');
+        var existingKeys = new Set(existing.map(function (r) {
+          return r.date + '|' + r.players;
+        }));
+        var newRounds = normalised.filter(function (r) {
+          return !existingKeys.has(r.date + '|' + r.players);
+        });
+        var merged = [].concat(_toConsumableArray(existing), _toConsumableArray(newRounds));
+        localStorage.setItem('nassau-history', JSON.stringify(merged));
+        setHistory(_toConsumableArray(merged).reverse());
+        setImportStatus(newRounds.length > 0 ? 'success' : 'empty');
+      } else {
+        setImportStatus('error');
+      }
+      setImportingFromSheets(false);
+    };
+    script.onerror = function () {
+      clearTimeout(timeout);
+      setImportStatus('error');
+      setImportingFromSheets(false);
+      delete window[callbackName];
+    };
+    script.src = SCRIPT_URL + '?callback=' + callbackName;
+    document.head.appendChild(script);
   };
   var deleteRound = function deleteRound(idx) {
     var updated = history.filter(function (_, i) {
@@ -2790,15 +2850,67 @@ function GameScreen(_ref2) {
     }
   }, "All saved rounds from your Google Sheets."), /*#__PURE__*/React.createElement("div", {
     style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
       fontSize: '0.78rem',
       color: COLORS.muted,
-      marginBottom: 12,
+      marginBottom: 10,
       padding: '8px 12px',
       background: COLORS.surface,
       borderRadius: 8,
       border: "1px solid ".concat(COLORS.cardBorder)
     }
-  }, "\uD83D\uDCA1 History is saved on this device. Google Sheets gets a backup copy when you're online."), history.length > 0 && function () {
+  }, "\uD83D\uDCA1 History is saved on this device. Google Sheets gets a backup copy when you're online."), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-outline btn-sm",
+    style: {
+      width: '100%',
+      padding: '10px',
+      fontSize: '0.85rem',
+      borderColor: COLORS.accent + '66',
+      color: COLORS.accent,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8
+    },
+    onClick: importFromSheets,
+    disabled: importingFromSheets
+  }, importingFromSheets ? '⏳ Loading from Google Sheets...' : '☁️ Import from Google Sheets'), importStatus === 'success' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8,
+      padding: '8px 12px',
+      background: 'rgba(46,204,113,0.12)',
+      borderRadius: 8,
+      border: "1px solid ".concat(COLORS.green, "44"),
+      color: COLORS.green,
+      fontSize: '0.82rem',
+      textAlign: 'center'
+    }
+  }, "\u2713 New rounds imported from Google Sheets!"), importStatus === 'empty' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8,
+      padding: '8px 12px',
+      background: COLORS.surface,
+      borderRadius: 8,
+      border: "1px solid ".concat(COLORS.cardBorder),
+      color: COLORS.muted,
+      fontSize: '0.82rem',
+      textAlign: 'center'
+    }
+  }, "Already up to date \u2014 no new rounds to import."), importStatus === 'error' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8,
+      padding: '8px 12px',
+      background: 'rgba(231,76,60,0.12)',
+      borderRadius: 8,
+      border: "1px solid ".concat(COLORS.red, "44"),
+      color: COLORS.red,
+      fontSize: '0.82rem',
+      textAlign: 'center'
+    }
+  }, "\u2717 Could not reach Google Sheets. Make sure the Apps Script supports ?callback= and is redeployed.")), history.length > 0 && function () {
     // Compute lifetime stats
     var allNets = history.flatMap(function (r) {
       return (r.netMoney || r['Net Money'] || '').split(', ');
@@ -3120,21 +3232,21 @@ function clearAllStorage() {
   });
 }
 function App() {
-  var _useState45 = useState(function () {
+  var _useState49 = useState(function () {
       var saved = localStorage.getItem('nassau-gameState');
       if (saved) try {
         return JSON.parse(saved);
       } catch (e) {}
       return null;
     }),
-    _useState46 = _slicedToArray(_useState45, 2),
-    gameState = _useState46[0],
-    setGameState = _useState46[1];
+    _useState50 = _slicedToArray(_useState49, 2),
+    gameState = _useState50[0],
+    setGameState = _useState50[1];
   // Changing resetKey forces GameScreen to fully remount with blank state
-  var _useState47 = useState(0),
-    _useState48 = _slicedToArray(_useState47, 2),
-    resetKey = _useState48[0],
-    setResetKey = _useState48[1];
+  var _useState51 = useState(0),
+    _useState52 = _slicedToArray(_useState51, 2),
+    resetKey = _useState52[0],
+    setResetKey = _useState52[1];
   var doReset = function doReset() {
     clearAllStorage();
     setGameState(null);
