@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Nassau Golf v1780551481577 -->
+<!-- Nassau Golf v1780551801199 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -55,7 +55,7 @@
 </head>
 <body>
   <div id="root"></div>
-  <script>/* v1780551481577 *//**
+  <script>/* v1780551801199 *//**
  * @license React
  * react.production.min.js
  *
@@ -1256,6 +1256,10 @@ function GameScreen(_ref2) {
     _useState48 = _slicedToArray(_useState47, 2),
     importStatus = _useState48[0],
     setImportStatus = _useState48[1];
+  var _useState49 = useState(null),
+    _useState50 = _slicedToArray(_useState49, 2),
+    selectedPlayer = _useState50[0],
+    setSelectedPlayer = _useState50[1];
   var autoPressAlerts = [];
   if (autoPressEnabled) {
     matches.forEach(function (m) {
@@ -1358,18 +1362,16 @@ function GameScreen(_ref2) {
   };
   var saveRound = /*#__PURE__*/function () {
     var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
-      var date, playerSummary, winner, matchSummary, payload, existingHistory, updatedHistory;
+      var today, date, playerSummary, winner, matchSummary, payload, existingHistory, updatedHistory;
       return _regenerator().w(function (_context) {
         while (1) switch (_context.n) {
           case 0:
             setSaving(true);
             setSaveStatus(null);
             try {
-              date = new Date().toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-              }); // Build player money summary
+              today = new Date();
+              date = today.toISOString().slice(0, 10); // YYYY-MM-DD
+              // Build player money summary
               playerSummary = initPlayers.map(function (p) {
                 var bal = playerBalances[p.id] || 0;
                 var str = bal >= 0 ? "+$".concat(Math.round(bal)) : "-$".concat(Math.round(Math.abs(bal)));
@@ -2944,10 +2946,16 @@ function GameScreen(_ref2) {
         color: COLORS.accent,
         marginBottom: 8
       }
-    }, "ALL TIME"), Object.entries(playerTotals).map(function (_ref7) {
-      var _ref8 = _slicedToArray(_ref7, 2),
-        name = _ref8[0],
-        total = _ref8[1];
+    }, "ALL TIME"), Object.entries(playerTotals).sort(function (_ref7, _ref8) {
+      var _ref9 = _slicedToArray(_ref7, 2),
+        a = _ref9[1];
+      var _ref0 = _slicedToArray(_ref8, 2),
+        b = _ref0[1];
+      return b - a;
+    }).map(function (_ref1) {
+      var _ref10 = _slicedToArray(_ref1, 2),
+        name = _ref10[0],
+        total = _ref10[1];
       return /*#__PURE__*/React.createElement("div", {
         key: name,
         style: {
@@ -3251,28 +3259,32 @@ function parseNetAmount(rawVal) {
   return Math.round(parseFloat(match[0]) * sign);
 }
 function HistoryTab() {
-  var _useState49 = useState(function () {
+  var _useState51 = useState(function () {
       return _toConsumableArray(loadHistoryFromStorage()).reverse();
     }),
-    _useState50 = _slicedToArray(_useState49, 2),
-    history = _useState50[0],
-    setHistory = _useState50[1];
-  var _useState51 = useState(null),
     _useState52 = _slicedToArray(_useState51, 2),
-    editingIdx = _useState52[0],
-    setEditingIdx = _useState52[1];
+    history = _useState52[0],
+    setHistory = _useState52[1];
   var _useState53 = useState(null),
     _useState54 = _slicedToArray(_useState53, 2),
-    editingData = _useState54[0],
-    setEditingData = _useState54[1];
-  var _useState55 = useState(false),
+    editingIdx = _useState54[0],
+    setEditingIdx = _useState54[1];
+  var _useState55 = useState(null),
     _useState56 = _slicedToArray(_useState55, 2),
-    importingFromSheets = _useState56[0],
-    setImportingFromSheets = _useState56[1];
-  var _useState57 = useState(null),
+    editingData = _useState56[0],
+    setEditingData = _useState56[1];
+  var _useState57 = useState(false),
     _useState58 = _slicedToArray(_useState57, 2),
-    importStatus = _useState58[0],
-    setImportStatus = _useState58[1];
+    importingFromSheets = _useState58[0],
+    setImportingFromSheets = _useState58[1];
+  var _useState59 = useState(null),
+    _useState60 = _slicedToArray(_useState59, 2),
+    importStatus = _useState60[0],
+    setImportStatus = _useState60[1];
+  var _useState61 = useState(null),
+    _useState62 = _slicedToArray(_useState61, 2),
+    selectedPlayer = _useState62[0],
+    setSelectedPlayer = _useState62[1];
   var deleteRound = function deleteRound(displayIdx) {
     var stored = loadHistoryFromStorage();
     var storageIdx = stored.length - 1 - displayIdx;
@@ -3431,31 +3443,171 @@ function HistoryTab() {
       color: COLORS.accent,
       marginBottom: 6
     }
-  }, "ALL TIME"), Object.entries(playerTotals).map(function (_ref9) {
-    var _ref0 = _slicedToArray(_ref9, 2),
-      name = _ref0[0],
-      total = _ref0[1];
+  }, "ALL TIME \u2014 tap a player to see history"), Object.entries(playerTotals).sort(function (_ref11, _ref12) {
+    var _ref13 = _slicedToArray(_ref11, 2),
+      a = _ref13[1];
+    var _ref14 = _slicedToArray(_ref12, 2),
+      b = _ref14[1];
+    return b - a;
+  }).map(function (_ref15) {
+    var _ref16 = _slicedToArray(_ref15, 2),
+      name = _ref16[0],
+      total = _ref16[1];
     return /*#__PURE__*/React.createElement("div", {
       key: name,
+      onClick: function onClick() {
+        return setSelectedPlayer(selectedPlayer === name ? null : name);
+      },
       style: {
         display: 'flex',
         justifyContent: 'space-between',
+        alignItems: 'center',
         fontSize: '0.85rem',
-        padding: '2px 0'
+        padding: '6px 8px',
+        borderRadius: 6,
+        marginBottom: 2,
+        cursor: 'pointer',
+        background: selectedPlayer === name ? COLORS.card : 'transparent',
+        border: "1px solid ".concat(selectedPlayer === name ? COLORS.accent : COLORS.cardBorder + '00')
       }
     }, /*#__PURE__*/React.createElement("span", {
       style: {
         color: COLORS.text,
         fontWeight: 600
       }
-    }, name), /*#__PURE__*/React.createElement("span", {
+    }, name), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8
+      }
+    }, /*#__PURE__*/React.createElement("span", {
       style: {
         fontFamily: 'JetBrains Mono',
         fontWeight: 700,
         color: total > 0 ? COLORS.green : total < 0 ? COLORS.red : COLORS.muted
       }
-    }, total > 0 ? '+$' : total < 0 ? '-$' : '$', Math.abs(total)));
-  })), history.length === 0 && /*#__PURE__*/React.createElement("div", {
+    }, total > 0 ? '+$' : total < 0 ? '-$' : '$', Math.abs(total)), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: COLORS.muted,
+        fontSize: '0.75rem'
+      }
+    }, selectedPlayer === name ? '▲' : '▼')));
+  }), selectedPlayer && function (_points$, _points) {
+    // Build cumulative money over time for selected player
+    var playerRounds = _toConsumableArray(history).reverse().filter(function (r) {
+      return (r.netMoney || r['Net Money'] || '').includes(selectedPlayer + ':');
+    });
+    var running = 0;
+    var points = playerRounds.map(function (r) {
+      var nets = (r.netMoney || r['Net Money'] || '').split(', ');
+      var net = nets.find(function (n) {
+        return n.startsWith(selectedPlayer + ':');
+      });
+      if (net) {
+        var amt = parseNetAmount((net.split(':')[1] || '').trim());
+        running += amt;
+      }
+      return {
+        date: r.date || r['Date'] || '',
+        cumulative: running
+      };
+    });
+    if (points.length === 0) return null;
+    var min = Math.min.apply(Math, [0].concat(_toConsumableArray(points.map(function (p) {
+      return p.cumulative;
+    }))));
+    var max = Math.max.apply(Math, [0].concat(_toConsumableArray(points.map(function (p) {
+      return p.cumulative;
+    }))));
+    var range = max - min || 1;
+    var W = 280,
+      H = 80,
+      pad = 8;
+    var plotW = W - pad * 2,
+      plotH = H - pad * 2;
+    var toX = function toX(i) {
+      return pad + i / Math.max(points.length - 1, 1) * plotW;
+    };
+    var toY = function toY(v) {
+      return pad + plotH - (v - min) / range * plotH;
+    };
+    var zeroY = toY(0);
+    var polyline = points.map(function (p, i) {
+      return "".concat(toX(i), ",").concat(toY(p.cumulative));
+    }).join(' ');
+    var lastPt = points[points.length - 1];
+    var lastColor = lastPt.cumulative >= 0 ? COLORS.green : COLORS.red;
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        padding: '10px',
+        background: COLORS.bg,
+        borderRadius: 8,
+        border: "1px solid ".concat(COLORS.cardBorder)
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: '0.75rem',
+        color: COLORS.muted,
+        marginBottom: 4,
+        fontFamily: 'DM Sans'
+      }
+    }, selectedPlayer, " \xB7 ", points.length, " rounds \xB7 running total"), /*#__PURE__*/React.createElement("svg", {
+      width: W,
+      height: H,
+      style: {
+        display: 'block',
+        overflow: 'visible'
+      }
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: pad,
+      y1: zeroY,
+      x2: W - pad,
+      y2: zeroY,
+      stroke: COLORS.cardBorder,
+      strokeWidth: "1",
+      strokeDasharray: "3,3"
+    }), /*#__PURE__*/React.createElement("polygon", {
+      points: "".concat(toX(0), ",").concat(zeroY, " ").concat(polyline, " ").concat(toX(points.length - 1), ",").concat(zeroY),
+      fill: lastPt.cumulative >= 0 ? COLORS.green + '22' : COLORS.red + '22'
+    }), /*#__PURE__*/React.createElement("polyline", {
+      points: polyline,
+      fill: "none",
+      stroke: lastColor,
+      strokeWidth: "2",
+      strokeLinejoin: "round"
+    }), points.map(function (p, i) {
+      return /*#__PURE__*/React.createElement("circle", {
+        key: i,
+        cx: toX(i),
+        cy: toY(p.cumulative),
+        r: "3",
+        fill: p.cumulative >= 0 ? COLORS.green : COLORS.red,
+        stroke: COLORS.bg,
+        strokeWidth: "1.5"
+      });
+    }), /*#__PURE__*/React.createElement("text", {
+      x: toX(points.length - 1),
+      y: toY(lastPt.cumulative) - 6,
+      textAnchor: "middle",
+      fill: lastColor,
+      fontSize: "10",
+      fontFamily: "JetBrains Mono",
+      fontWeight: "bold"
+    }, lastPt.cumulative >= 0 ? '+$' : '-$', Math.abs(lastPt.cumulative))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontSize: '0.62rem',
+        color: COLORS.muted,
+        fontFamily: 'JetBrains Mono',
+        marginTop: 2,
+        paddingLeft: pad,
+        paddingRight: pad
+      }
+    }, /*#__PURE__*/React.createElement("span", null, (_points$ = points[0]) === null || _points$ === void 0 ? void 0 : _points$.date), points.length > 1 && /*#__PURE__*/React.createElement("span", null, (_points = points[points.length - 1]) === null || _points === void 0 ? void 0 : _points.date)));
+  }()), history.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: 'center',
       padding: '30px 0',
@@ -3656,24 +3808,24 @@ function HistoryTab() {
   }));
 }
 function App() {
-  var _useState59 = useState(function () {
+  var _useState63 = useState(function () {
       var saved = localStorage.getItem('nassau-gameState');
       if (saved) try {
         return JSON.parse(saved);
       } catch (e) {}
       return null;
     }),
-    _useState60 = _slicedToArray(_useState59, 2),
-    gameState = _useState60[0],
-    setGameState = _useState60[1];
-  var _useState61 = useState('setup'),
-    _useState62 = _slicedToArray(_useState61, 2),
-    setupTab = _useState62[0],
-    setSetupTab = _useState62[1];
-  var _useState63 = useState(0),
     _useState64 = _slicedToArray(_useState63, 2),
-    resetKey = _useState64[0],
-    setResetKey = _useState64[1];
+    gameState = _useState64[0],
+    setGameState = _useState64[1];
+  var _useState65 = useState('setup'),
+    _useState66 = _slicedToArray(_useState65, 2),
+    setupTab = _useState66[0],
+    setSetupTab = _useState66[1];
+  var _useState67 = useState(0),
+    _useState68 = _slicedToArray(_useState67, 2),
+    resetKey = _useState68[0],
+    setResetKey = _useState68[1];
   var doReset = function doReset() {
     clearAllStorage();
     setGameState(null);
