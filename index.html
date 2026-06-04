@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Nassau Golf v1780551801199 -->
+<!-- Nassau Golf v1780552270646 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -55,7 +55,7 @@
 </head>
 <body>
   <div id="root"></div>
-  <script>/* v1780551801199 *//**
+  <script>/* v1780552270646 *//**
  * @license React
  * react.production.min.js
  *
@@ -1362,7 +1362,7 @@ function GameScreen(_ref2) {
   };
   var saveRound = /*#__PURE__*/function () {
     var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
-      var today, date, playerSummary, winner, matchSummary, payload, existingHistory, updatedHistory;
+      var today, days, yyyy, mm, dd, date, playerSummary, winner, matchSummary, payload, existingHistory, updatedHistory;
       return _regenerator().w(function (_context) {
         while (1) switch (_context.n) {
           case 0:
@@ -1370,8 +1370,11 @@ function GameScreen(_ref2) {
             setSaveStatus(null);
             try {
               today = new Date();
-              date = today.toISOString().slice(0, 10); // YYYY-MM-DD
-              // Build player money summary
+              days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+              yyyy = today.getFullYear();
+              mm = String(today.getMonth() + 1).padStart(2, '0');
+              dd = String(today.getDate()).padStart(2, '0');
+              date = "".concat(yyyy, "-").concat(mm, "-").concat(dd, " ").concat(days[today.getDay()]); // Build player money summary
               playerSummary = initPlayers.map(function (p) {
                 var bal = playerBalances[p.id] || 0;
                 var str = bal >= 0 ? "+$".concat(Math.round(bal)) : "-$".concat(Math.round(Math.abs(bal)));
@@ -3648,7 +3651,7 @@ function HistoryTab() {
         letterSpacing: 2,
         color: COLORS.text
       }
-    }, round.date || round['Date']), /*#__PURE__*/React.createElement("div", {
+    }, (round.date || round['Date'] || '').replace(/T.*$/, '')), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         gap: 4
