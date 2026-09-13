@@ -16,6 +16,8 @@ export function PlayerGate({ players }: { players: Player[] }) {
   const [name, setName] = useState("")
   const [lastName, setLastName] = useState("")
   const [handicap, setHandicap] = useState("")
+  const [username, setUsername] = useState("")
+  const [photo, setPhoto] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const q = query.trim().toLowerCase()
@@ -38,6 +40,8 @@ export function PlayerGate({ players }: { players: Player[] }) {
         name,
         lastName: lastName || undefined,
         handicap: handicap ? Number(handicap) : 0,
+        nickname: username,
+        photo,
       })
       if (!res.ok) {
         setError(res.error)
@@ -121,6 +125,15 @@ export function PlayerGate({ players }: { players: Player[] }) {
                 className="h-12 w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 outline-none focus:border-[var(--color-primary)]"
                 placeholder="Needed only if your first name is taken"
               />
+            </div>
+            <div>
+              <label htmlFor="signup-username" className="mb-1 block text-sm font-medium">Username <span className="font-normal text-[var(--color-muted)]">(optional)</span></label>
+              <input id="signup-username" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={20} placeholder="Shown on scorecards" className="h-12 w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 outline-none focus:border-[var(--color-primary)]" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Selfie <span className="font-normal text-[var(--color-muted)]">(optional)</span></label>
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} className="block w-full text-sm text-[var(--color-muted)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--color-primary)] file:px-4 file:py-2 file:font-semibold file:text-[var(--color-primary-foreground)]" />
+              <p className="mt-1 text-xs text-[var(--color-muted)]">JPG, PNG or WebP · Max 3 MB</p>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Handicap</label>

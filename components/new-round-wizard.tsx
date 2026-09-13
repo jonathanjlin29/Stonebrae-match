@@ -31,6 +31,8 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
   // add-new-player inline
   const [newName, setNewName] = useState("")
   const [newLast, setNewLast] = useState("")
+  const [newUsername, setNewUsername] = useState("")
+  const [newPhoto, setNewPhoto] = useState<File | null>(null)
   const [addErr, setAddErr] = useState<string | null>(null)
 
   const selectedPlayers = useMemo(
@@ -50,7 +52,7 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
     e.preventDefault()
     setAddErr(null)
     start(async () => {
-      const res = await createPlayer({ name: newName, lastName: newLast || undefined, handicap: 0 })
+      const res = await createPlayer({ name: newName, lastName: newLast || undefined, nickname: newUsername, photo: newPhoto, handicap: 0 })
       if (!res.ok) {
         setAddErr(res.error)
         return
@@ -60,6 +62,8 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
       setHandicaps((h) => ({ ...h, [res.player.id]: 0 }))
       setNewName("")
       setNewLast("")
+      setNewUsername("")
+      setNewPhoto(null)
     })
   }
 
@@ -195,6 +199,17 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
                 placeholder="Last (if name taken)"
                 className="h-11 min-w-32 flex-1 rounded-full bg-[var(--color-surface-2)] px-4 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               />
+              <input
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder="Username (optional)"
+                maxLength={20}
+                className="h-11 min-w-32 flex-1 rounded-full bg-[var(--color-surface-2)] px-4 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+              <label className="flex h-11 cursor-pointer items-center rounded-full bg-[var(--color-surface-2)] px-4 text-sm text-[var(--color-muted)]">
+                Selfie
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setNewPhoto(e.target.files?.[0] ?? null)} className="sr-only" />
+              </label>
               <Button type="submit" variant="outline" disabled={pending}>
                 Add
               </Button>
