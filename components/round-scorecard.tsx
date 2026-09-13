@@ -171,7 +171,7 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
                         : rel === "birdie"
                           ? "text-[var(--color-primary)]"
                           : rel === "bogey"
-                            ? "text-[var(--color-accent)]"
+                            ? "text-[var(--color-muted)]"
                             : rel === "double+"
                               ? "text-[var(--color-danger)]"
                               : "text-[var(--color-foreground)]"
@@ -307,7 +307,7 @@ function CelebrationOverlay({ celebration }: { celebration: Celebration | null }
               className="animate-confetti absolute top-0 h-2 w-2 rounded-sm"
               style={{
                 left: `${(i / 14) * 100}%`,
-                backgroundColor: i % 3 === 0 ? "var(--color-gold)" : i % 3 === 1 ? "var(--color-primary)" : "var(--color-accent)",
+                backgroundColor: i % 3 === 0 ? "var(--color-gold)" : i % 3 === 1 ? "var(--color-primary)" : "var(--color-danger)",
                 animationDelay: `${i * 40}ms`,
               }}
             />

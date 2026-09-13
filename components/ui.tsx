@@ -6,7 +6,7 @@ export function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={clsx(
-        "rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur",
+        "card-shadow rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)]",
         className,
       )}
       {...props}
@@ -15,14 +15,15 @@ export function Card({ className, ...props }: ComponentProps<"div">) {
 }
 
 const buttonBase =
-  "inline-flex items-center justify-center gap-2 rounded-[var(--radius)] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] disabled:opacity-50 disabled:pointer-events-none"
+  "inline-flex items-center justify-center gap-2 rounded-[var(--radius)] font-semibold tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-background)] disabled:opacity-50 disabled:pointer-events-none"
 
 const variants = {
   primary: "bg-[var(--color-primary)] text-[var(--color-primary-foreground)] hover:brightness-110",
-  outline: "border border-[var(--color-border)] bg-transparent text-[var(--color-foreground)] hover:bg-[var(--color-surface-2)]",
+  outline:
+    "border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-foreground)] hover:bg-[var(--color-surface-2)]",
   ghost: "bg-transparent text-[var(--color-muted)] hover:text-[var(--color-foreground)] hover:bg-[var(--color-surface-2)]",
   danger: "bg-[var(--color-danger)] text-white hover:brightness-110",
-  gold: "bg-[var(--color-gold)] text-[#2a1e00] hover:brightness-110",
+  gold: "bg-[var(--color-gold)] text-[#1a1204] hover:brightness-110",
 }
 
 const sizes = {

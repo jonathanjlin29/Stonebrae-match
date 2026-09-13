@@ -1,22 +1,51 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #edeff3;
+  --border: #e0e3e9;
+  --foreground: #0e141b;
+  --muted: #5b6472;
+  --primary: #067a4a;
+  --primary-foreground: #f3fdf7;
+  --gold: #a3690a;
+  --danger: #c22b3a;
+  --shadow-color: 220 20% 60%;
+}
+
+.dark {
+  --background: #0a0f18;
+  --surface: #10161f;
+  --surface-2: #161e2b;
+  --border: #232c3b;
+  --foreground: #eef2f8;
+  --muted: #8a94a6;
+  --primary: #2fd57e;
+  --primary-foreground: #052712;
+  --gold: #f2b84b;
+  --danger: #f0596a;
+  --shadow-color: 220 60% 2%;
+}
+
 @theme inline {
-  --color-background: #0a1628;
-  --color-surface: #0f2038;
-  --color-surface-2: #14294a;
-  --color-border: #22375c;
-  --color-foreground: #eaf1ff;
-  --color-muted: #8ba3c7;
-  --color-primary: #2ee87a;
-  --color-primary-foreground: #04120a;
-  --color-gold: #f5c451;
-  --color-danger: #ff5d6c;
-  --color-accent: #4aa8ff;
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-gold: var(--gold);
+  --color-danger: var(--danger);
 
   --font-display: var(--font-display);
   --font-sans: var(--font-sans);
 
-  --radius: 0.75rem;
+  --radius: 0.625rem;
 }
 
 * {
@@ -24,22 +53,33 @@
 }
 
 html {
+  color-scheme: light;
+}
+html.dark {
   color-scheme: dark;
 }
 
 body {
-  background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(46, 232, 122, 0.08), transparent 60%),
-    var(--color-background);
+  background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .font-display {
   font-family: var(--font-display), sans-serif;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  font-weight: 700;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.card-shadow {
+  box-shadow: 0 1px 2px hsl(var(--shadow-color) / 0.06), 0 8px 24px -12px hsl(var(--shadow-color) / 0.18);
 }
 
 /* ── Animations ─────────────────────────────────── */

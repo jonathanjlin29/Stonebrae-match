@@ -45,7 +45,7 @@ export default async function PlayerStatsPage({ params }: { params: Promise<{ id
               sub={`${stats.roundsPlayed} completed ${stats.roundsPlayed === 1 ? "round" : "rounds"}`}
             />
             <StatCard
-              icon={<Swords className="h-5 w-5 text-[var(--color-accent)]" />}
+              icon={<Swords className="h-5 w-5 text-[var(--color-gold)]" />}
               label="Press record"
               value={`${stats.pressesWon}-${stats.pressesLost}`}
               sub={pressWinPct != null ? `${pressWinPct}% win rate over ${stats.pressesPlayed} presses` : "No presses yet"}

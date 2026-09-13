@@ -1,14 +1,15 @@
 import type { Metadata, Viewport } from "next"
-import { Bebas_Neue, DM_Sans } from "next/font/google"
+import { Oswald, Inter } from "next/font/google"
+import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
-const display = Bebas_Neue({
-  weight: "400",
+const display = Oswald({
+  weight: ["500", "600", "700"],
   subsets: ["latin"],
   variable: "--font-display",
 })
 
-const sans = DM_Sans({
+const sans = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
 })
@@ -21,7 +22,10 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#0a1628",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f6f8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0f18" },
+  ],
   width: "device-width",
   initialScale: 1,
 }
@@ -32,8 +36,12 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable}`}>
-      <body>{children}</body>
+    <html lang="en" className={`${display.variable} ${sans.variable}`} suppressHydrationWarning>
+      <body>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   )
 }
