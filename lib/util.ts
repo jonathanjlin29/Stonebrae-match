@@ -30,3 +30,9 @@ export function byId(players: Player[]): Record<number, Player> {
   for (const p of players) m[p.id] = p
   return m
 }
+
+const RING_COLORS = ["#15c867", "#ffd700", "#4d8dff", "#ff6b73", "#c07bff", "#3fd8c4"]
+
+export function ringColor(id: number): string {
+  return RING_COLORS[Math.abs(id) % RING_COLORS.length]
+}

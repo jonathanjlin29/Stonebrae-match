@@ -6,8 +6,8 @@ import { Check, Plus, Minus, Users, User, ArrowRight, ArrowLeft, X } from "lucid
 import { createPlayer } from "@/app/actions/players"
 import { createRound } from "@/app/actions/rounds"
 import type { Player } from "@/lib/types"
-import { initials, playerLabel, shortLabel } from "@/lib/util"
-import { Button, Card } from "./ui"
+import { playerLabel, shortLabel } from "@/lib/util"
+import { Button, Card, PlayerAvatar } from "./ui"
 
 type MatchDraft = {
   type: "singles" | "team"
@@ -158,9 +158,7 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
                   >
                     {on && <Check className="h-4 w-4" strokeWidth={3} />}
                   </button>
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-surface-2)] font-display text-[var(--color-primary)]">
-                    {initials(p)}
-                  </span>
+                  <PlayerAvatar player={p} />
                   <span className="flex-1 font-medium">{playerLabel(p)}</span>
                   {on && (
                     <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">

@@ -15,7 +15,7 @@ import {
 import { COURSE } from "@/lib/course"
 import type { Match, Round, Scores } from "@/lib/types"
 import { formatMoney, moneyClass, shortLabel } from "@/lib/util"
-import { Button, Card, Badge } from "./ui"
+import { Button, Card, Badge, PlayerAvatar } from "./ui"
 
 type Celebration = { type: "bounce" | "fire"; name: string; detail: string; key: number }
 
@@ -162,7 +162,12 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
               const playedAny = holes.some((v: number | null) => v != null)
               return (
                 <tr key={p.id} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="sticky left-0 z-10 bg-[var(--color-surface)] px-3 py-2 font-medium">{shortLabel(p)}</td>
+                  <td className="sticky left-0 z-10 bg-[var(--color-surface)] px-3 py-2 font-medium">
+                    <div className="flex items-center gap-2">
+                      <PlayerAvatar player={p} size="sm" />
+                      <span>{shortLabel(p)}</span>
+                    </div>
+                  </td>
                   {holes.map((v: number | null, h: number) => {
                     const rel = relToPar(v, COURSE.holes[h].par)
                     const relClass =
@@ -224,6 +229,8 @@ function MatchCard({
   const byId = Object.fromEntries(players.map((p) => [p.id, p]))
   const teamAName = match.teamA.map((id) => shortLabel(byId[id])).join(" & ")
   const teamBName = match.teamB.map((id) => shortLabel(byId[id])).join(" & ")
+  const teamAPlayers = match.teamA.map((id) => byId[id]).filter(Boolean)
+  const teamBPlayers = match.teamB.map((id) => byId[id]).filter(Boolean)
 
   const front = computeMatchStatus(match, scores, players, 0, 8)
   const back = computeMatchStatus(match, scores, players, 9, 17)
@@ -238,11 +245,23 @@ function MatchCard({
 
   return (
     <Card className="p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="flex items-center gap-2 font-semibold">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 font-semibold">
           <Flag className="h-4 w-4 text-[var(--color-primary)]" />
-          {teamAName} <span className="text-[var(--color-muted)]">vs</span> {teamBName}
-        </p>
+          <div className="flex -space-x-2">
+            {teamAPlayers.map((p) => (
+              <PlayerAvatar key={p.id} player={p} size="sm" />
+            ))}
+          </div>
+          <span>{teamAName}</span>
+          <span className="text-[var(--color-muted)]">vs</span>
+          <span>{teamBName}</span>
+          <div className="flex -space-x-2">
+            {teamBPlayers.map((p) => (
+              <PlayerAvatar key={p.id} player={p} size="sm" />
+            ))}
+          </div>
+        </div>
         <Badge>
           ${match.nineBet}/9 · ${match.overallBet} ovr
         </Badge>
