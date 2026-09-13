@@ -26,6 +26,11 @@ export async function getCurrentPlayer(): Promise<Player | null> {
   return rows[0] ? mapPlayer(rows[0]) : null
 }
 
+export async function getPlayerById(id: number): Promise<Player | null> {
+  const rows = await sql`SELECT id, name, last_name, handicap FROM players WHERE id = ${id}`
+  return rows[0] ? mapPlayer(rows[0]) : null
+}
+
 export async function createPlayer(input: {
   name: string
   lastName?: string
