@@ -150,7 +150,7 @@ export function RoundScorecard({
     setCompleting(true)
     start(async () => {
       await completeRound(round.id)
-      router.push(`/round/${round.id}`)
+      router.push("/")
       router.refresh()
     })
   }
