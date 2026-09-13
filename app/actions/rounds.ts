@@ -3,7 +3,7 @@
 import { sql } from "@/lib/db"
 import { COURSE } from "@/lib/course"
 import { computeMatchMoney } from "@/lib/nassau"
-import { getCurrentPlayerId } from "@/lib/session"
+import { getCurrentPlayerId, getIsAdmin } from "@/lib/session"
 import type { Match, Player, Round, RoundPlayer, Scores } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 
@@ -51,7 +51,7 @@ export async function getRound(id: number): Promise<Round | null> {
   const r = roundRows[0]
 
   const playerRows = await sql`
-    SELECT rp.player_id, rp.handicap, rp.money_won, p.name, p.last_name
+    SELECT rp.player_id, rp.handicap, rp.money_won, p.name, p.last_name, p.nickname
     FROM round_players rp JOIN players p ON p.id = rp.player_id
     WHERE rp.round_id = ${id}
     ORDER BY rp.id ASC`
@@ -60,6 +60,7 @@ export async function getRound(id: number): Promise<Round | null> {
     id: row.player_id,
     name: row.name,
     lastName: row.last_name,
+    nickname: row.nickname ?? null,
     handicap: row.handicap,
     roundHandicap: row.handicap,
     moneyWon: Number(row.money_won),
@@ -139,6 +140,7 @@ export async function recomputeRoundMoney(roundId: number) {
     id: p.id,
     name: p.name,
     lastName: p.lastName,
+    nickname: p.nickname,
     handicap: p.roundHandicap,
   }))
 
@@ -168,6 +170,28 @@ export async function completeRound(roundId: number) {
 export async function reopenRound(roundId: number) {
   await sql`UPDATE rounds SET status = 'active', completed_at = NULL WHERE id = ${roundId}`
   revalidatePath(`/round/${roundId}`)
+  return { ok: true }
+}
+
+export async function deleteRound(roundId: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  const currentPlayerId = await getCurrentPlayerId()
+  const isAdmin = await getIsAdmin()
+
+  const rows = await sql`SELECT created_by FROM rounds WHERE id = ${roundId}`
+  if (!rows[0]) return { ok: false, error: "Round not found." }
+
+  const isCreator = currentPlayerId != null && rows[0].created_by === currentPlayerId
+  if (!isAdmin && !isCreator) {
+    return { ok: false, error: "Only an admin or the round's creator can delete it." }
+  }
+
+  await sql`DELETE FROM matches WHERE round_id = ${roundId}`
+  await sql`DELETE FROM scores WHERE round_id = ${roundId}`
+  await sql`DELETE FROM round_players WHERE round_id = ${roundId}`
+  await sql`DELETE FROM rounds WHERE id = ${roundId}`
+
+  revalidatePath("/")
+  revalidatePath("/leaderboard")
   return { ok: true }
 }
 

@@ -2,8 +2,8 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw } from "lucide-react"
-import { saveScore, addPress, completeRound } from "@/app/actions/rounds"
+import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2 } from "lucide-react"
+import { saveScore, addPress, completeRound, deleteRound } from "@/app/actions/rounds"
 import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
   computeMatchMoney,
@@ -39,6 +39,9 @@ export function RoundScorecard({
   const [completing, setCompleting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState<Tab>("matches")
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   // Cells the user has typed into but that haven't been confirmed saved yet. A refetch that lands
   // mid-edit must not clobber these, or the score the user just typed appears to "delete itself."
   const dirtyRef = useRef<Set<string>>(new Set())
@@ -170,6 +173,22 @@ export function RoundScorecard({
     })
   }
 
+  function handleDelete() {
+    setDeleting(true)
+    setDeleteError(null)
+    start(async () => {
+      const res = await deleteRound(round.id)
+      if (res.ok) {
+        router.push("/")
+        router.refresh()
+      } else {
+        setDeleting(false)
+        setConfirmingDelete(false)
+        setDeleteError(res.error)
+      }
+    })
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <CelebrationOverlay celebration={celebration} onDismiss={dismissCelebration} />
@@ -197,8 +216,38 @@ export function RoundScorecard({
               <Lock className="h-3.5 w-3.5" /> Final
             </Badge>
           )}
+          {(isAdmin || (currentPlayerId != null && currentPlayerId === round.createdBy)) &&
+            (confirmingDelete ? (
+              <div className="flex items-center gap-1.5">
+                <Button onClick={handleDelete} disabled={deleting} variant="danger">
+                  <Trash2 className="h-4 w-4" /> {deleting ? "Deleting…" : "Confirm Delete"}
+                </Button>
+                <button
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={deleting}
+                  className="rounded-full px-3 py-2 text-sm text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                aria-label="Delete round"
+                title="Delete round"
+                className="rounded-full p-2 text-[var(--color-muted)] hover:bg-[var(--color-danger)]/10 hover:text-[var(--color-danger)]"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            ))}
         </div>
       </div>
+
+      {deleteError ? (
+        <div className="mb-4 rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2.5 text-sm text-[var(--color-danger)]">
+          {deleteError}
+        </div>
+      ) : null}
 
       <div className="mb-6">
         <SegmentedControl
@@ -452,7 +501,7 @@ function MatchCard({
 }: {
   match: Match
   scores: Scores
-  players: { id: number; name: string; lastName: string | null; handicap: number }[]
+  players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
   isActive: boolean
   isAdmin: boolean
   onPress: (match: Match, scope: "front" | "back") => void
@@ -691,5 +740,5 @@ function mergeScores(server: Scores, local: Scores, dirty: Set<string>): Scores 
 function sumRange(holes: (number | null)[], start: number, end: number): number | null {
   const slice = holes.slice(start, end + 1)
   if (!slice.some((v) => v != null)) return null
-  return slice.reduce((s, v) => (v != null ? s + v : s), 0)
+  return slice.reduce<number>((s, v) => (v != null ? s + v : s), 0)
 }
