@@ -18,7 +18,7 @@ import type { Match, Round, Scores } from "@/lib/types"
 import { formatMoney, moneyClass, shortLabel } from "@/lib/util"
 import { Button, Card, Badge, PlayerAvatar, SegmentedControl } from "./ui"
 
-type Celebration = { type: "bounce" | "fire"; name: string; detail: string; key: number }
+type Celebration = { type: "bounce" | "fire" | "birdie"; name: string; detail: string; key: number }
 type Tab = "matches" | "scorecard"
 
 export function RoundScorecard({
@@ -89,7 +89,15 @@ export function RoundScorecard({
   function fireCelebration(c: Omit<Celebration, "key">) {
     if (celebrationTimer.current) clearTimeout(celebrationTimer.current)
     setCelebration({ ...c, key: Date.now() })
-    celebrationTimer.current = setTimeout(() => setCelebration(null), 2400)
+    // The birdie video runs a bit longer than the badge-style pop-ups; onEnded on the <video>
+    // will also clear it early once playback finishes, so this timeout is just a safety fallback.
+    const duration = c.type === "birdie" ? 4500 : 2400
+    celebrationTimer.current = setTimeout(() => setCelebration(null), duration)
+  }
+
+  function dismissCelebration() {
+    if (celebrationTimer.current) clearTimeout(celebrationTimer.current)
+    setCelebration(null)
   }
 
   function updateScore(playerId: number, hole: number, raw: string) {
@@ -108,6 +116,8 @@ export function RoundScorecard({
           const streak = birdieStreakEndingAt(holes, hole)
           if (streak >= 2 && player) {
             fireCelebration({ type: "fire", name: shortLabel(player), detail: `Fire Hot · ${streak} in a row` })
+          } else if (player && relToPar(value, COURSE.holes[hole].par) === "birdie") {
+            fireCelebration({ type: "birdie", name: shortLabel(player), detail: "Birdie!" })
           }
         }
       }
@@ -157,7 +167,7 @@ export function RoundScorecard({
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <CelebrationOverlay celebration={celebration} />
+      <CelebrationOverlay celebration={celebration} onDismiss={dismissCelebration} />
 
       <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -583,8 +593,36 @@ function StatusRow({
   )
 }
 
-function CelebrationOverlay({ celebration }: { celebration: Celebration | null }) {
+function CelebrationOverlay({
+  celebration,
+  onDismiss,
+}: {
+  celebration: Celebration | null
+  onDismiss: () => void
+}) {
   if (!celebration) return null
+
+  if (celebration.type === "birdie") {
+    return (
+      <div
+        className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        key={celebration.key}
+      >
+        <div className="animate-pop flex flex-col items-center gap-3">
+          <video
+            src="/videos/birdie-bomb.mp4"
+            autoPlay
+            muted
+            playsInline
+            onEnded={onDismiss}
+            className="h-72 w-72 rounded-[28px] object-cover shadow-2xl ring-1 ring-[var(--color-primary)]/40 sm:h-96 sm:w-96"
+          />
+          <p className="font-display text-2xl text-white drop-shadow-lg">{celebration.name} · Birdie!</p>
+        </div>
+      </div>
+    )
+  }
+
   const isFire = celebration.type === "fire"
   return (
     <div className="pointer-events-none fixed inset-x-0 top-6 z-50 flex justify-center" key={celebration.key}>
