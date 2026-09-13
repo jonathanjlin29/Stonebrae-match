@@ -116,7 +116,12 @@ export function RoundScorecard({
           const streak = birdieStreakEndingAt(holes, hole)
           if (streak >= 2 && player) {
             fireCelebration({ type: "fire", name: shortLabel(player), detail: `Fire Hot · ${streak} in a row` })
-          } else if (player && relToPar(value, COURSE.holes[hole].par) === "birdie") {
+          } else if (
+            player &&
+            currentPlayerId != null &&
+            playerId === currentPlayerId &&
+            relToPar(value, COURSE.holes[hole].par) === "birdie"
+          ) {
             fireCelebration({ type: "birdie", name: shortLabel(player), detail: "Birdie!" })
           }
         }
