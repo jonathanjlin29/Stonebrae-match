@@ -16,9 +16,10 @@ import {
 import { COURSE } from "@/lib/course"
 import type { Match, Round, Scores } from "@/lib/types"
 import { formatMoney, moneyClass, shortLabel } from "@/lib/util"
-import { Button, Card, Badge, PlayerAvatar } from "./ui"
+import { Button, Card, Badge, PlayerAvatar, SegmentedControl } from "./ui"
 
 type Celebration = { type: "bounce" | "fire"; name: string; detail: string; key: number }
+type Tab = "matches" | "scorecard"
 
 export function RoundScorecard({
   round,
@@ -37,6 +38,7 @@ export function RoundScorecard({
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [completing, setCompleting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [tab, setTab] = useState<Tab>("matches")
   // Cells the user has typed into but that haven't been confirmed saved yet. A refetch that lands
   // mid-edit must not clobber these, or the score the user just typed appears to "delete itself."
   const dirtyRef = useRef<Set<string>>(new Set())
@@ -183,7 +185,18 @@ export function RoundScorecard({
         </div>
       </div>
 
-      <section className="mb-6 grid gap-3">
+      <div className="mb-6">
+        <SegmentedControl
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "matches", label: "Matches" },
+            { value: "scorecard", label: "Scorecard" },
+          ]}
+        />
+      </div>
+
+      <section className={`mb-6 grid gap-3 ${tab === "matches" ? "" : "hidden"}`}>
         {matches.map((m) => (
           <MatchCard
             key={m.id}
@@ -200,7 +213,7 @@ export function RoundScorecard({
         ))}
       </section>
 
-      <Card className="mb-6 hidden overflow-x-auto p-0 sm:block">
+      <Card className={`mb-6 overflow-x-auto p-0 ${tab === "scorecard" ? "hidden sm:block" : "hidden"}`}>
         <table className="w-full min-w-[900px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-[var(--color-border)] text-[var(--color-muted)]">
@@ -275,7 +288,7 @@ export function RoundScorecard({
       </Card>
 
       {/* Mobile: holes stack as rows so players scroll down through the round instead of side to side. */}
-      <Card className="mb-6 overflow-hidden p-0 sm:hidden">
+      <Card className={`mb-6 overflow-hidden p-0 sm:hidden ${tab === "scorecard" ? "" : "hidden"}`}>
         <div className="max-h-[65vh] overflow-y-auto">
           <div
             className="grid text-sm"
