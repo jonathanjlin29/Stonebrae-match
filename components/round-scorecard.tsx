@@ -12,6 +12,7 @@ import {
   isBounceBack,
   birdieStreakEndingAt,
   relToPar,
+  getStrokesGiven,
 } from "@/lib/nassau"
 import { COURSE } from "@/lib/course"
 import type { Match, Round, Scores } from "@/lib/types"
@@ -54,6 +55,7 @@ export function RoundScorecard({
     photoUrl: p.photoUrl,
     handicap: p.roundHandicap,
   }))
+  const lowestHandicap = players.length > 0 ? Math.min(...players.map((p) => p.handicap)) : 0
   const isActive = round.status === "active"
   const canEditScores = isActive || isAdmin
 
@@ -289,6 +291,7 @@ export function RoundScorecard({
                 <th key={h.hole} className="px-1.5 py-3 text-center font-medium tabular">
                   <div>{h.hole}</div>
                   <div className="text-[10px] opacity-70">Par {h.par}</div>
+                  <div className="text-[10px] font-semibold text-[var(--color-primary)]">HCP {h.hcp}</div>
                 </th>
               ))}
               <th className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-foreground)]">
@@ -324,7 +327,15 @@ export function RoundScorecard({
                               : "text-[var(--color-foreground)]"
                     return (
                       <td key={h} className="px-1 py-1.5 text-center">
-                        {canEditScores ? (
+                        <div className="relative inline-flex items-center justify-center">
+                          {getStrokesGiven(p.handicap, lowestHandicap, COURSE.holes[h].hcp) > 0 ? (
+                            <span
+                              aria-label={`${shortLabel(p)} gets a stroke on hole ${COURSE.holes[h].hole}`}
+                              title="Stroke received"
+                              className="absolute -right-0.5 -top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]"
+                            />
+                          ) : null}
+                          {canEditScores ? (
                           <input
                             type="number"
                             inputMode="numeric"
@@ -333,11 +344,12 @@ export function RoundScorecard({
                             onBlur={() => commitScore(p.id, h)}
                             className={`h-9 w-9 rounded-full bg-[var(--color-surface-2)] text-center font-semibold tabular outline-none transition-shadow focus:ring-2 focus:ring-[var(--color-primary)] ${relClass}`}
                           />
-                        ) : (
-                          <span className={`inline-flex h-9 w-9 items-center justify-center font-semibold tabular ${relClass}`}>
-                            {v ?? "–"}
-                          </span>
-                        )}
+                          ) : (
+                            <span className={`inline-flex h-9 w-9 items-center justify-center font-semibold tabular ${relClass}`}>
+                              {v ?? "–"}
+                            </span>
+                          )}
+                        </div>
                       </td>
                     )
                   })}
@@ -377,6 +389,7 @@ export function RoundScorecard({
                 <div className="flex flex-col items-center justify-center border-b border-[var(--color-border)] px-1 py-1.5 text-[var(--color-muted)]">
                   <span className="font-display text-sm leading-none text-[var(--color-foreground)]">{h.hole}</span>
                   <span className="text-[9px] leading-none opacity-70">Par {h.par}</span>
+                  <span className="text-[9px] font-semibold leading-none text-[var(--color-primary)]">HCP {h.hcp}</span>
                 </div>
                 {players.map((p) => {
                   const v = scores[p.id]?.[hIdx] ?? null
@@ -396,7 +409,15 @@ export function RoundScorecard({
                       key={p.id}
                       className="flex items-center justify-center border-b border-[var(--color-border)] px-1 py-1"
                     >
-                      {canEditScores ? (
+                      <div className="relative inline-flex items-center justify-center">
+                        {getStrokesGiven(p.handicap, lowestHandicap, h.hcp) > 0 ? (
+                          <span
+                            aria-label={`${shortLabel(p)} gets a stroke on hole ${h.hole}`}
+                            title="Stroke received"
+                            className="absolute -right-0.5 -top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]"
+                          />
+                        ) : null}
+                        {canEditScores ? (
                         <input
                           type="number"
                           inputMode="numeric"
@@ -405,11 +426,12 @@ export function RoundScorecard({
                           onBlur={() => commitScore(p.id, hIdx)}
                           className={`h-10 w-10 rounded-full bg-[var(--color-surface-2)] text-center font-semibold tabular outline-none transition-shadow focus:ring-2 focus:ring-[var(--color-primary)] ${relClass}`}
                         />
-                      ) : (
-                        <span className={`inline-flex h-10 w-10 items-center justify-center font-semibold tabular ${relClass}`}>
-                          {v ?? "–"}
-                        </span>
-                      )}
+                        ) : (
+                          <span className={`inline-flex h-10 w-10 items-center justify-center font-semibold tabular ${relClass}`}>
+                            {v ?? "–"}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
