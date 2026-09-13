@@ -2,7 +2,7 @@ import { Trophy, Medal } from "lucide-react"
 import { getLeaderboard } from "@/app/actions/analytics"
 import { getCurrentPlayer } from "@/app/actions/players"
 import { SiteHeader } from "@/components/site-header"
-import { Card } from "@/components/ui"
+import { Card, PlayerAvatar } from "@/components/ui"
 import { formatMoney, moneyClass, playerLabel } from "@/lib/util"
 
 export const revalidate = 0
@@ -45,6 +45,7 @@ export default async function LeaderboardPage() {
                 >
                   {i < 3 ? <Medal className="h-4.5 w-4.5" /> : i + 1}
                 </span>
+                <PlayerAvatar player={r} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{playerLabel(r)}</p>
                   <p className="text-xs text-[var(--color-muted)]">

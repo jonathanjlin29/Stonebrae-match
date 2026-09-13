@@ -33,7 +33,7 @@ export function NicknameEditor({ currentNickname }: { currentNickname: string | 
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">Nickname</p>
           <p className="font-display text-lg">{currentNickname || "None set"}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+        <Button variant="outline" size="sm" onClick={() => { setValue(currentNickname ?? ""); setError(null); setEditing(true) }}>
           <Pencil className="h-4 w-4" /> Edit
         </Button>
       </Card>

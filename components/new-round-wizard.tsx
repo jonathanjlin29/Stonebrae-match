@@ -21,7 +21,8 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
   const router = useRouter()
   const [pending, start] = useTransition()
   const [step, setStep] = useState(1)
-  const [roster, setRoster] = useState<Player[]>(players)
+  const [addedPlayers, setAddedPlayers] = useState<Player[]>([])
+  const roster = useMemo(() => [...players, ...addedPlayers.filter((added) => !players.some((player) => player.id === added.id))], [players, addedPlayers])
   const [selected, setSelected] = useState<number[]>([currentPlayer.id])
   const [handicaps, setHandicaps] = useState<Record<number, number>>({ [currentPlayer.id]: currentPlayer.handicap })
   const [matches, setMatches] = useState<MatchDraft[]>([])
@@ -54,7 +55,7 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
         setAddErr(res.error)
         return
       }
-      setRoster((r) => [...r, res.player])
+      setAddedPlayers((current) => [...current, res.player])
       setSelected((s) => [...s, res.player.id])
       setHandicaps((h) => ({ ...h, [res.player.id]: 0 }))
       setNewName("")

@@ -4,11 +4,14 @@ import { sql } from "@/lib/db"
 import { COURSE } from "@/lib/course"
 import { isBounceBack } from "@/lib/nassau"
 import type { PlayerAnalytics } from "@/lib/nassau"
+import { getPlayers } from "./players"
 
 export type LeaderboardEntry = {
   id: number
   name: string
   lastName: string | null
+  nickname: string | null
+  photoUrl: string | null
   totalMoney: number
   roundsPlayed: number
   bestRound: number
@@ -25,11 +28,14 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
     LEFT JOIN rounds r ON r.id = rp.round_id AND r.status = 'completed'
     GROUP BY p.id, p.name, p.last_name
     ORDER BY total_money DESC, rounds_played DESC`
+  const profiles = new Map((await getPlayers()).map((player) => [player.id, player]))
   return rows
     .map((r: any) => ({
       id: r.id,
       name: r.name,
       lastName: r.last_name,
+      nickname: profiles.get(r.id)?.nickname ?? null,
+      photoUrl: profiles.get(r.id)?.photoUrl ?? null,
       totalMoney: Number(r.total_money),
       roundsPlayed: Number(r.rounds_played),
       bestRound: Number(r.best_round),

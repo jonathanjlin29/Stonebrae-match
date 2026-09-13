@@ -1,8 +1,6 @@
 import { clsx } from "clsx"
 import Link from "next/link"
 import type { ComponentProps } from "react"
-import { initials, ringColor } from "@/lib/util"
-import type { Player } from "@/lib/types"
 
 export function Card({ className, ...props }: ComponentProps<"div">) {
   return (
@@ -54,35 +52,7 @@ export function LinkButton({
   return <Link className={clsx(buttonBase, variants[variant], sizes[size], className)} {...props} />
 }
 
-const avatarSizes = {
-  sm: "h-8 w-8 text-xs",
-  md: "h-9 w-9 text-sm",
-  lg: "h-12 w-12 text-base",
-}
-
-export function PlayerAvatar({
-  player,
-  size = "md",
-  className,
-}: {
-  player: Pick<Player, "id" | "name" | "lastName">
-  size?: keyof typeof avatarSizes
-  className?: string
-}) {
-  const ring = ringColor(player.id)
-  return (
-    <span
-      className={clsx(
-        "flex shrink-0 items-center justify-center rounded-full bg-[var(--color-surface-2)] font-display",
-        avatarSizes[size],
-        className,
-      )}
-      style={{ boxShadow: `0 0 0 2px var(--color-surface), 0 0 0 3.5px ${ring}`, color: ring }}
-    >
-      {initials(player)}
-    </span>
-  )
-}
+export { PlayerAvatar } from "./player-avatar"
 
 export function Badge({ className, ...props }: ComponentProps<"span">) {
   return (

@@ -51,6 +51,7 @@ export function RoundScorecard({
     name: p.name,
     lastName: p.lastName,
     nickname: p.nickname,
+    photoUrl: p.photoUrl,
     handicap: p.roundHandicap,
   }))
   const isActive = round.status === "active"

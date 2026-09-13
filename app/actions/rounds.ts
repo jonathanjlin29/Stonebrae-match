@@ -6,6 +6,7 @@ import { computeMatchMoney } from "@/lib/nassau"
 import { getCurrentPlayerId, getIsAdmin } from "@/lib/session"
 import type { Match, Player, Round, RoundPlayer, Scores } from "@/lib/types"
 import { revalidatePath } from "next/cache"
+import { getPlayers } from "./players"
 
 type MatchConfig = {
   type: "singles" | "team"
@@ -56,11 +57,13 @@ export async function getRound(id: number): Promise<Round | null> {
     WHERE rp.round_id = ${id}
     ORDER BY rp.id ASC`
 
+  const profiles = new Map((await getPlayers()).map((player) => [player.id, player]))
   const players: RoundPlayer[] = playerRows.map((row: any) => ({
     id: row.player_id,
     name: row.name,
     lastName: row.last_name,
     nickname: row.nickname ?? null,
+    photoUrl: profiles.get(row.player_id)?.photoUrl ?? null,
     handicap: row.handicap,
     roundHandicap: row.handicap,
     moneyWon: Number(row.money_won),

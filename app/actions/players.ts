@@ -4,6 +4,8 @@ import { sql } from "@/lib/db"
 import { getCurrentPlayerId, setCurrentPlayerId, clearCurrentPlayer } from "@/lib/session"
 import type { Player } from "@/lib/types"
 import { revalidatePath } from "next/cache"
+import { asc, eq } from "drizzle-orm"
+import { avatarUrl, profileDb, profilePlayers, publicPlayerFields } from "@/lib/profile-db"
 
 function mapPlayer(row: any): Player {
   return {
@@ -12,23 +14,24 @@ function mapPlayer(row: any): Player {
     lastName: row.last_name,
     handicap: row.handicap,
     nickname: row.nickname ?? null,
+    photoUrl: avatarUrl(row.id, row.photo_version ?? null, !!row.has_photo),
   }
 }
 
 export async function getPlayers(): Promise<Player[]> {
-  const rows = await sql`SELECT id, name, last_name, handicap, nickname FROM players ORDER BY name ASC, last_name ASC NULLS FIRST`
+  const rows = await profileDb.select(publicPlayerFields).from(profilePlayers).orderBy(asc(profilePlayers.name), asc(profilePlayers.lastName))
   return rows.map(mapPlayer)
 }
 
 export async function getCurrentPlayer(): Promise<Player | null> {
   const id = await getCurrentPlayerId()
   if (!id) return null
-  const rows = await sql`SELECT id, name, last_name, handicap, nickname FROM players WHERE id = ${id}`
+  const rows = await profileDb.select(publicPlayerFields).from(profilePlayers).where(eq(profilePlayers.id, id)).limit(1)
   return rows[0] ? mapPlayer(rows[0]) : null
 }
 
 export async function getPlayerById(id: number): Promise<Player | null> {
-  const rows = await sql`SELECT id, name, last_name, handicap, nickname FROM players WHERE id = ${id}`
+  const rows = await profileDb.select(publicPlayerFields).from(profilePlayers).where(eq(profilePlayers.id, id)).limit(1)
   return rows[0] ? mapPlayer(rows[0]) : null
 }
 

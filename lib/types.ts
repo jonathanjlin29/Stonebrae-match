@@ -6,6 +6,7 @@ export type Player = {
   lastName: string | null
   handicap: number
   nickname: string | null
+  photoUrl?: string | null
 }
 
 export type RoundPlayer = Player & {
