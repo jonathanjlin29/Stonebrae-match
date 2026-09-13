@@ -17,6 +17,12 @@ export function SiteHeader({ player }: { player?: Player | null }) {
         </Link>
         <nav className="flex items-center gap-1 sm:gap-1.5">
           <Link
+            href="/"
+            className="rounded-full px-3.5 py-2 text-sm font-semibold text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+          >
+            Home
+          </Link>
+          <Link
             href="/leaderboard"
             className="rounded-full px-3.5 py-2 text-sm font-semibold text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
           >
