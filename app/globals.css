@@ -13,6 +13,7 @@
   --primary-foreground: #ffffff;
   --gold: #c8930f;
   --danger: #ff3b30;
+  --match-square: #3b82f6;
   --shadow-color: 210 20% 45%;
 }
 
@@ -27,6 +28,7 @@
   --primary-foreground: #04140a;
   --gold: #ffcf3f;
   --danger: #ff5b52;
+  --match-square: #60a5fa;
   --shadow-color: 0 0% 0%;
 }
 
@@ -41,6 +43,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-gold: var(--gold);
   --color-danger: var(--danger);
+  --color-match-square: var(--match-square);
 
   --font-display: var(--font-display);
   --font-sans: var(--font-sans);
