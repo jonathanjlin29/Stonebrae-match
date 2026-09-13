@@ -1,9 +1,10 @@
 "use client"
 
-import { useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock } from "lucide-react"
+import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw } from "lucide-react"
 import { saveScore, addPress, completeRound } from "@/app/actions/rounds"
+import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
   computeMatchMoney,
   computeMatchStatus,
@@ -19,7 +20,15 @@ import { Button, Card, Badge, PlayerAvatar } from "./ui"
 
 type Celebration = { type: "bounce" | "fire"; name: string; detail: string; key: number }
 
-export function RoundScorecard({ round, currentPlayerId }: { round: Round; currentPlayerId: number | null }) {
+export function RoundScorecard({
+  round,
+  currentPlayerId,
+  isAdmin = false,
+}: {
+  round: Round
+  currentPlayerId: number | null
+  isAdmin?: boolean
+}) {
   const router = useRouter()
   const [, start] = useTransition()
   const [scores, setScores] = useState<Scores>(() => clone(round.scores))
@@ -27,9 +36,39 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
   const [celebration, setCelebration] = useState<Celebration | null>(null)
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [completing, setCompleting] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
-  const players = round.players.map((p) => ({ id: p.id, name: p.name, lastName: p.lastName, handicap: p.roundHandicap }))
+  const players = round.players.map((p) => ({
+    id: p.id,
+    name: p.name,
+    lastName: p.lastName,
+    nickname: p.nickname,
+    handicap: p.roundHandicap,
+  }))
   const isActive = round.status === "active"
+  const canEditScores = isActive || isAdmin
+
+  // Keep local state in sync whenever the server component re-fetches (poll or manual refresh).
+  useEffect(() => {
+    setScores(clone(round.scores))
+    setMatches(round.matches)
+  }, [round])
+
+  // Everyone viewing an active round gets a periodic re-sync so scores/presses/money stay current
+  // without needing push infrastructure.
+  useEffect(() => {
+    if (!isActive) return
+    const interval = setInterval(() => {
+      router.refresh()
+    }, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [isActive, router])
+
+  function manualRefresh() {
+    setRefreshing(true)
+    router.refresh()
+    setTimeout(() => setRefreshing(false), 600)
+  }
 
   const totals = useMemo(() => {
     const t: Record<number, number> = {}
@@ -116,15 +155,25 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
           <p className="text-sm font-medium text-[var(--color-muted)]">{round.courseName}</p>
           <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Match Scorecard</h1>
         </div>
-        {isActive ? (
-          <Button onClick={finish} disabled={completing} variant="gold">
-            <CheckCircle2 className="h-4 w-4" /> {completing ? "Finishing…" : "Complete Round"}
-          </Button>
-        ) : (
-          <Badge className="gap-1.5 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
-            <Lock className="h-3.5 w-3.5" /> Final
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={manualRefresh}
+            aria-label="Refresh scorecard"
+            title="Refresh scorecard"
+            className="rounded-full p-2 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+          {isActive ? (
+            <Button onClick={finish} disabled={completing} variant="gold">
+              <CheckCircle2 className="h-4 w-4" /> {completing ? "Finishing…" : "Complete Round"}
+            </Button>
+          ) : (
+            <Badge className="gap-1.5 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
+              <Lock className="h-3.5 w-3.5" /> Final
+            </Badge>
+          )}
+        </div>
       </div>
 
       <section className="mb-6 grid gap-3">
@@ -135,7 +184,11 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
             scores={scores}
             players={players}
             isActive={isActive}
+            isAdmin={isAdmin}
             onPress={pressScope}
+            onBetsChanged={(matchId, nineBet, overallBet) =>
+              setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
+            }
           />
         ))}
       </section>
@@ -186,7 +239,7 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
                               : "text-[var(--color-foreground)]"
                     return (
                       <td key={h} className="px-1 py-1.5 text-center">
-                        {isActive ? (
+                        {canEditScores ? (
                           <input
                             type="number"
                             inputMode="numeric"
@@ -222,13 +275,17 @@ function MatchCard({
   scores,
   players,
   isActive,
+  isAdmin,
   onPress,
+  onBetsChanged,
 }: {
   match: Match
   scores: Scores
   players: { id: number; name: string; lastName: string | null; handicap: number }[]
   isActive: boolean
+  isAdmin: boolean
   onPress: (match: Match, scope: "front" | "back") => void
+  onBetsChanged: (matchId: number, nineBet: number, overallBet: number) => void
 }) {
   const byId = Object.fromEntries(players.map((p) => [p.id, p]))
   const teamAName = match.teamA.map((id) => shortLabel(byId[id])).join(" & ")
@@ -266,9 +323,13 @@ function MatchCard({
             ))}
           </div>
         </div>
-        <Badge className="tabular">
-          ${match.nineBet}/9 · ${match.overallBet} ovr
-        </Badge>
+        {isAdmin ? (
+          <BetEditor match={match} onSaved={onBetsChanged} />
+        ) : (
+          <Badge className="tabular">
+            ${match.nineBet}/9 · ${match.overallBet} ovr
+          </Badge>
+        )}
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         <StatusRow label="Front" value={frontLabel} canPress={canPressFront} onPress={() => onPress(match, "front")} />
@@ -285,6 +346,55 @@ function MatchCard({
         </div>
       )}
     </Card>
+  )
+}
+
+function BetEditor({
+  match,
+  onSaved,
+}: {
+  match: Match
+  onSaved: (matchId: number, nineBet: number, overallBet: number) => void
+}) {
+  const [nineBet, setNineBet] = useState(String(match.nineBet))
+  const [overallBet, setOverallBet] = useState(String(match.overallBet))
+  const [pending, start] = useTransition()
+
+  function commit() {
+    const n = Math.max(0, Number(nineBet) || 0)
+    const o = Math.max(0, Number(overallBet) || 0)
+    setNineBet(String(n))
+    setOverallBet(String(o))
+    if (n === match.nineBet && o === match.overallBet) return
+    start(async () => {
+      const res = await updateMatchBetsAdmin(match.id, n, o)
+      if (res.ok) onSaved(match.id, n, o)
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs">
+      <span className="text-[var(--color-muted)]">$</span>
+      <input
+        type="number"
+        value={nineBet}
+        onChange={(e) => setNineBet(e.target.value)}
+        onBlur={commit}
+        disabled={pending}
+        className="h-7 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+      />
+      <span className="text-[var(--color-muted)]">/9 ·</span>
+      <span className="text-[var(--color-muted)]">$</span>
+      <input
+        type="number"
+        value={overallBet}
+        onChange={(e) => setOverallBet(e.target.value)}
+        onBlur={commit}
+        disabled={pending}
+        className="h-7 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+      />
+      <span className="text-[var(--color-muted)]">ovr</span>
+    </div>
   )
 }
 

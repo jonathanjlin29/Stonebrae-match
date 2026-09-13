@@ -3,6 +3,7 @@ import { Flame, TrendingUp, Coins, Swords, BarChart3 } from "lucide-react"
 import { getPlayerAnalytics } from "@/app/actions/analytics"
 import { getCurrentPlayer, getPlayerById } from "@/app/actions/players"
 import { SiteHeader } from "@/components/site-header"
+import { NicknameEditor } from "@/components/nickname-editor"
 import { Card } from "@/components/ui"
 import { formatMoney, moneyClass, playerLabel } from "@/lib/util"
 
@@ -31,6 +32,8 @@ export default async function PlayerStatsPage({ params }: { params: Promise<{ id
           <BarChart3 className="h-7 w-7 text-[var(--color-primary)]" />
           <h1 className="font-display text-4xl">{playerLabel(player)}</h1>
         </div>
+
+        {currentPlayer?.id === player.id && <NicknameEditor currentNickname={player.nickname} />}
 
         {stats.roundsPlayed === 0 ? (
           <Card className="p-8 text-center text-[var(--color-muted)]">

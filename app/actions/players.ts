@@ -11,23 +11,24 @@ function mapPlayer(row: any): Player {
     name: row.name,
     lastName: row.last_name,
     handicap: row.handicap,
+    nickname: row.nickname ?? null,
   }
 }
 
 export async function getPlayers(): Promise<Player[]> {
-  const rows = await sql`SELECT id, name, last_name, handicap FROM players ORDER BY name ASC, last_name ASC NULLS FIRST`
+  const rows = await sql`SELECT id, name, last_name, handicap, nickname FROM players ORDER BY name ASC, last_name ASC NULLS FIRST`
   return rows.map(mapPlayer)
 }
 
 export async function getCurrentPlayer(): Promise<Player | null> {
   const id = await getCurrentPlayerId()
   if (!id) return null
-  const rows = await sql`SELECT id, name, last_name, handicap FROM players WHERE id = ${id}`
+  const rows = await sql`SELECT id, name, last_name, handicap, nickname FROM players WHERE id = ${id}`
   return rows[0] ? mapPlayer(rows[0]) : null
 }
 
 export async function getPlayerById(id: number): Promise<Player | null> {
-  const rows = await sql`SELECT id, name, last_name, handicap FROM players WHERE id = ${id}`
+  const rows = await sql`SELECT id, name, last_name, handicap, nickname FROM players WHERE id = ${id}`
   return rows[0] ? mapPlayer(rows[0]) : null
 }
 
@@ -61,7 +62,7 @@ export async function createPlayer(input: {
   }
 
   const rows =
-    await sql`INSERT INTO players (name, last_name, handicap) VALUES (${name}, ${lastName}, ${handicap}) RETURNING id, name, last_name, handicap`
+    await sql`INSERT INTO players (name, last_name, handicap) VALUES (${name}, ${lastName}, ${handicap}) RETURNING id, name, last_name, handicap, nickname`
   revalidatePath("/")
   return { ok: true, player: mapPlayer(rows[0]) }
 }
@@ -92,4 +93,18 @@ export async function signOut() {
 export async function updateHandicap(id: number, handicap: number) {
   await sql`UPDATE players SET handicap = ${Math.round(handicap)} WHERE id = ${id}`
   revalidatePath("/")
+}
+
+export async function updateNickname(nickname: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const id = await getCurrentPlayerId()
+  if (!id) return { ok: false, error: "You need to be signed in to set a nickname." }
+
+  const trimmed = nickname.trim()
+  if (trimmed.length > 20) return { ok: false, error: "Nicknames can be at most 20 characters." }
+
+  await sql`UPDATE players SET nickname = ${trimmed || null} WHERE id = ${id}`
+  revalidatePath("/")
+  revalidatePath("/leaderboard")
+  revalidatePath(`/player/${id}`)
+  return { ok: true }
 }

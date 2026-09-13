@@ -132,7 +132,7 @@ export async function addPress(roundId: number, matchId: number, scope: "front" 
   return { ok: true }
 }
 
-async function recomputeRoundMoney(roundId: number) {
+export async function recomputeRoundMoney(roundId: number) {
   const round = await getRound(roundId)
   if (!round) return
   const playerList: Player[] = round.players.map((p) => ({

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Flag } from "lucide-react"
+import { Flag, ShieldCheck } from "lucide-react"
 import { shortLabel } from "@/lib/util"
 import type { Player } from "@/lib/types"
 import { SignOutButton } from "./sign-out-button"
@@ -36,6 +36,14 @@ export function SiteHeader({ player }: { player?: Player | null }) {
               <SignOutButton />
             </>
           )}
+          <Link
+            href="/admin"
+            aria-label="Admin"
+            title="Admin"
+            className="rounded-lg p-2 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+          >
+            <ShieldCheck className="h-4 w-4" />
+          </Link>
           <ThemeToggle />
         </nav>
       </div>

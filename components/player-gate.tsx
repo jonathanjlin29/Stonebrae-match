@@ -18,7 +18,10 @@ export function PlayerGate({ players }: { players: Player[] }) {
   const [handicap, setHandicap] = useState("")
   const [error, setError] = useState<string | null>(null)
 
-  const filtered = players.filter((p) => playerLabel(p).toLowerCase().includes(query.trim().toLowerCase()))
+  const q = query.trim().toLowerCase()
+  const filtered = players.filter((p) =>
+    [playerLabel(p), p.name, p.lastName, p.nickname].some((v) => v?.toLowerCase().includes(q)),
+  )
 
   function choose(id: number) {
     start(async () => {

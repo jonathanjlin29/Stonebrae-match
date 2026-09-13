@@ -1,14 +1,22 @@
 import type { Player } from "./types"
 
-export function playerLabel(p: { name: string; lastName?: string | null }): string {
+export function playerLabel(p: { name: string; lastName?: string | null; nickname?: string | null }): string {
+  if (p.nickname) return p.nickname
   return p.lastName ? `${p.name} ${p.lastName}` : p.name
 }
 
-export function shortLabel(p: { name: string; lastName?: string | null }): string {
+export function shortLabel(p: { name: string; lastName?: string | null; nickname?: string | null }): string {
+  if (p.nickname) return p.nickname
   return p.lastName ? `${p.name} ${p.lastName[0]}.` : p.name
 }
 
-export function initials(p: { name: string; lastName?: string | null }): string {
+export function initials(p: { name: string; lastName?: string | null; nickname?: string | null }): string {
+  if (p.nickname) {
+    const parts = p.nickname.trim().split(/\s+/)
+    const a = parts[0]?.[0] ?? "?"
+    const b = parts[1]?.[0] ?? ""
+    return (a + b).toUpperCase()
+  }
   const a = p.name?.[0] ?? "?"
   const b = p.lastName?.[0] ?? ""
   return (a + b).toUpperCase()

@@ -31,3 +31,26 @@ export async function clearCurrentPlayer() {
   const store = await cookies()
   store.delete(COOKIE)
 }
+
+const ADMIN_COOKIE = "stonebrae_admin"
+
+export async function getIsAdmin(): Promise<boolean> {
+  const store = await cookies()
+  return store.get(ADMIN_COOKIE)?.value === "1"
+}
+
+export async function setAdmin() {
+  const store = await cookies()
+  store.set(ADMIN_COOKIE, "1", {
+    httpOnly: true,
+    sameSite: isDev ? "none" : "lax",
+    secure: true,
+    path: "/",
+    maxAge: 60 * 60 * 12,
+  })
+}
+
+export async function clearAdmin() {
+  const store = await cookies()
+  store.delete(ADMIN_COOKIE)
+}
