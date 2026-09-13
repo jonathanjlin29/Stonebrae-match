@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
-import { Check, Plus, Users, User, ArrowRight, ArrowLeft, X } from "lucide-react"
+import { Check, Plus, Minus, Users, User, ArrowRight, ArrowLeft, X } from "lucide-react"
 import { createPlayer } from "@/app/actions/players"
 import { createRound } from "@/app/actions/rounds"
 import type { Player } from "@/lib/types"
@@ -157,15 +157,13 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
                   </span>
                   <span className="flex-1 font-medium">{playerLabel(p)}</span>
                   {on && (
-                    <label className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
-                      Hcp
-                      <input
-                        type="number"
+                    <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
+                      <span>Hcp</span>
+                      <HandicapStepper
                         value={handicaps[p.id] ?? 0}
-                        onChange={(e) => setHandicaps((h) => ({ ...h, [p.id]: Number(e.target.value) }))}
-                        className="h-9 w-16 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 text-center text-[var(--color-foreground)] outline-none focus:border-[var(--color-primary)]"
+                        onChange={(v) => setHandicaps((h) => ({ ...h, [p.id]: v }))}
                       />
-                    </label>
+                    </div>
                   )}
                 </div>
               )
@@ -312,6 +310,34 @@ function StepDot({ n, active, done, label }: { n: number; active: boolean; done:
       <span className={`text-sm font-medium ${active ? "text-[var(--color-foreground)]" : "text-[var(--color-muted)]"}`}>
         {label}
       </span>
+    </div>
+  )
+}
+
+function HandicapStepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const min = 0
+  const max = 54
+  return (
+    <div className="flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-background)] p-0.5">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(min, value - 1))}
+        disabled={value <= min}
+        className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-foreground)] transition-colors hover:bg-[var(--color-surface-2)] disabled:cursor-not-allowed disabled:opacity-40"
+        aria-label="Decrease handicap"
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <span className="w-7 text-center font-display text-base tabular-nums">{value}</span>
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(max, value + 1))}
+        disabled={value >= max}
+        className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-foreground)] transition-colors hover:bg-[var(--color-surface-2)] disabled:cursor-not-allowed disabled:opacity-40"
+        aria-label="Increase handicap"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }
