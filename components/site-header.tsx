@@ -1,0 +1,56 @@
+import Link from "next/link"
+import { Flag, ShieldCheck } from "lucide-react"
+import { ProfileSettings } from "./profile-settings"
+import type { Player } from "@/lib/types"
+import { SignOutButton } from "./sign-out-button"
+import { ThemeToggle } from "./theme-toggle"
+
+export function SiteHeader({ player }: { player?: Player | null }) {
+  return (
+    <header className="glass sticky top-0 z-30">
+      <div className="mx-auto flex min-h-[68px] max-w-5xl flex-wrap items-center justify-between px-4 py-3 sm:flex-nowrap sm:px-6">
+        <Link href="/" className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)] shadow-[0_6px_16px_-4px_hsl(150_70%_40%/0.55)]">
+            <Flag className="h-4.5 w-4.5" strokeWidth={2.5} />
+          </span>
+          <span className="font-display text-lg leading-none tracking-tight">Stonebrae Match</span>
+        </Link>
+        <nav aria-label="Main navigation" className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:justify-end sm:gap-1.5">
+          <Link
+            href="/"
+            className="rounded-full px-3.5 py-2 text-sm font-semibold text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+          >
+            Home
+          </Link>
+          <Link
+            href="/leaderboard"
+            className="rounded-full px-3.5 py-2 text-sm font-semibold text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+          >
+            Leaderboard
+          </Link>
+          {player && (
+            <>
+              <Link
+                href={`/player/${player.id}`}
+                className="rounded-full px-3.5 py-2 text-sm font-semibold text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+              >
+                My Stats
+              </Link>
+              <ProfileSettings key={player.id} player={player} />
+              <SignOutButton />
+            </>
+          )}
+          <Link
+            href="/admin"
+            aria-label="Admin"
+            title="Admin"
+            className="rounded-lg p-2 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+          >
+            <ShieldCheck className="h-4 w-4" />
+          </Link>
+          <ThemeToggle />
+        </nav>
+      </div>
+    </header>
+  )
+}
