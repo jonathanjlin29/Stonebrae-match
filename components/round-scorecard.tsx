@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw } from "lucide-react"
 import { saveScore, addPress, completeRound } from "@/app/actions/rounds"
@@ -37,6 +37,9 @@ export function RoundScorecard({
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [completing, setCompleting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  // Cells the user has typed into but that haven't been confirmed saved yet. A refetch that lands
+  // mid-edit must not clobber these, or the score the user just typed appears to "delete itself."
+  const dirtyRef = useRef<Set<string>>(new Set())
 
   const players = round.players.map((p) => ({
     id: p.id,
@@ -48,9 +51,10 @@ export function RoundScorecard({
   const isActive = round.status === "active"
   const canEditScores = isActive || isAdmin
 
-  // Keep local state in sync whenever the server component re-fetches (poll or manual refresh).
+  // Keep local state in sync whenever the server component re-fetches (poll or manual refresh),
+  // but preserve any cell that's still being edited/saved so in-flight input isn't overwritten.
   useEffect(() => {
-    setScores(clone(round.scores))
+    setScores((prev) => mergeScores(round.scores, prev, dirtyRef.current))
     setMatches(round.matches)
   }, [round])
 
@@ -88,6 +92,7 @@ export function RoundScorecard({
 
   function updateScore(playerId: number, hole: number, raw: string) {
     const value = raw === "" ? null : Math.max(1, Math.min(15, Number(raw)))
+    dirtyRef.current.add(`${playerId}:${hole}`)
     setScores((prev) => {
       const next = clone(prev)
       if (!next[playerId]) next[playerId] = Array(18).fill(null)
@@ -109,9 +114,11 @@ export function RoundScorecard({
   }
 
   function commitScore(playerId: number, hole: number) {
+    const key = `${playerId}:${hole}`
     const value = scores[playerId]?.[hole] ?? null
     start(async () => {
       await saveScore(round.id, playerId, hole, value)
+      dirtyRef.current.delete(key)
     })
   }
 
@@ -193,7 +200,7 @@ export function RoundScorecard({
         ))}
       </section>
 
-      <Card className="mb-6 overflow-x-auto p-0">
+      <Card className="mb-6 hidden overflow-x-auto p-0 sm:block">
         <table className="w-full min-w-[900px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-[var(--color-border)] text-[var(--color-muted)]">
@@ -265,6 +272,142 @@ export function RoundScorecard({
             })}
           </tbody>
         </table>
+      </Card>
+
+      {/* Mobile: holes stack as rows so players scroll down through the round instead of side to side. */}
+      <Card className="mb-6 overflow-hidden p-0 sm:hidden">
+        <div className="max-h-[65vh] overflow-y-auto">
+          <div
+            className="grid text-sm"
+            style={{ gridTemplateColumns: `48px repeat(${players.length}, minmax(0,1fr))` }}
+          >
+            <div className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+              Hole
+            </div>
+            {players.map((p) => (
+              <div
+                key={p.id}
+                className="sticky top-0 z-10 flex flex-col items-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-1 py-1.5"
+              >
+                <PlayerAvatar player={p} size="sm" />
+                <span className="max-w-full truncate text-[9px] font-semibold">{shortLabel(p)}</span>
+              </div>
+            ))}
+
+            {COURSE.holes.map((h, hIdx) => (
+              <Fragment key={h.hole}>
+                <div className="flex flex-col items-center justify-center border-b border-[var(--color-border)] px-1 py-1.5 text-[var(--color-muted)]">
+                  <span className="font-display text-sm leading-none text-[var(--color-foreground)]">{h.hole}</span>
+                  <span className="text-[9px] leading-none opacity-70">Par {h.par}</span>
+                </div>
+                {players.map((p) => {
+                  const v = scores[p.id]?.[hIdx] ?? null
+                  const rel = relToPar(v, h.par)
+                  const relClass =
+                    rel === "eagle"
+                      ? "text-[var(--color-gold)]"
+                      : rel === "birdie"
+                        ? "text-[var(--color-primary)]"
+                        : rel === "bogey"
+                          ? "text-[var(--color-muted)]"
+                          : rel === "double+"
+                            ? "text-[var(--color-danger)]"
+                            : "text-[var(--color-foreground)]"
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-center border-b border-[var(--color-border)] px-1 py-1"
+                    >
+                      {canEditScores ? (
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={v ?? ""}
+                          onChange={(e) => updateScore(p.id, hIdx, e.target.value)}
+                          onBlur={() => commitScore(p.id, hIdx)}
+                          className={`h-10 w-10 rounded-full bg-[var(--color-surface-2)] text-center font-semibold tabular outline-none transition-shadow focus:ring-2 focus:ring-[var(--color-primary)] ${relClass}`}
+                        />
+                      ) : (
+                        <span className={`inline-flex h-10 w-10 items-center justify-center font-semibold tabular ${relClass}`}>
+                          {v ?? "–"}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {hIdx === 8 && (
+                  <>
+                    <div className="flex items-center justify-center border-b border-[var(--color-border)] bg-[var(--color-surface-2)]/50 px-1 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                      Out
+                    </div>
+                    {players.map((p) => {
+                      const holes = scores[p.id] ?? Array(18).fill(null)
+                      const out = sumRange(holes, 0, 8)
+                      return (
+                        <div
+                          key={p.id}
+                          className="flex items-center justify-center border-b border-[var(--color-border)] bg-[var(--color-surface-2)]/50 px-1 py-1.5 text-sm font-semibold tabular"
+                        >
+                          {out ?? "–"}
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+
+                {hIdx === 17 && (
+                  <>
+                    <div className="flex items-center justify-center border-b border-[var(--color-border)] bg-[var(--color-surface-2)]/50 px-1 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                      In
+                    </div>
+                    {players.map((p) => {
+                      const holes = scores[p.id] ?? Array(18).fill(null)
+                      const inn = sumRange(holes, 9, 17)
+                      return (
+                        <div
+                          key={p.id}
+                          className="flex items-center justify-center border-b border-[var(--color-border)] bg-[var(--color-surface-2)]/50 px-1 py-1.5 text-sm font-semibold tabular"
+                        >
+                          {inn ?? "–"}
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+              </Fragment>
+            ))}
+
+            <div className="flex items-center justify-center border-b border-[var(--color-border)] px-1 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+              Tot
+            </div>
+            {players.map((p) => {
+              const holes = scores[p.id] ?? Array(18).fill(null)
+              const tot = holes.reduce((s: number, v) => (v != null ? s + v : s), 0)
+              const playedAny = holes.some((v: number | null) => v != null)
+              return (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-center border-b border-[var(--color-border)] px-1 py-2 font-display text-base tabular"
+                >
+                  {playedAny ? tot : "–"}
+                </div>
+              )
+            })}
+
+            <div className="flex items-center justify-center px-1 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+              $
+            </div>
+            {players.map((p) => (
+              <div
+                key={p.id}
+                className={`flex items-center justify-center px-1 py-2 font-display text-base tabular ${moneyClass(totals[p.id] ?? 0)}`}
+              >
+                {formatMoney(totals[p.id] ?? 0)}
+              </div>
+            ))}
+          </div>
+        </div>
       </Card>
     </div>
   )
@@ -473,4 +616,24 @@ function clone(s: Scores): Scores {
   const out: Scores = {}
   for (const [k, v] of Object.entries(s)) out[Number(k)] = [...v]
   return out
+}
+
+// Start from the freshly-fetched server scores, but keep whatever the user currently has typed
+// (or is still saving) for any cell marked dirty, so a refetch mid-edit can't erase live input.
+function mergeScores(server: Scores, local: Scores, dirty: Set<string>): Scores {
+  const out = clone(server)
+  for (const key of dirty) {
+    const [pidStr, holeStr] = key.split(":")
+    const pid = Number(pidStr)
+    const hole = Number(holeStr)
+    if (!out[pid]) out[pid] = Array(18).fill(null)
+    out[pid][hole] = local[pid]?.[hole] ?? null
+  }
+  return out
+}
+
+function sumRange(holes: (number | null)[], start: number, end: number): number | null {
+  const slice = holes.slice(start, end + 1)
+  if (!slice.some((v) => v != null)) return null
+  return slice.reduce((s, v) => (v != null ? s + v : s), 0)
 }
