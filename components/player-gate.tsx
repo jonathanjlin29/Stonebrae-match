@@ -23,7 +23,7 @@ export function PlayerGate({ players }: { players: Player[] }) {
   function choose(id: number) {
     start(async () => {
       await selectPlayer(id)
-      router.refresh()
+      router.push("/new")
     })
   }
 
@@ -40,7 +40,7 @@ export function PlayerGate({ players }: { players: Player[] }) {
         setError(res.error)
         return
       }
-      router.refresh()
+      router.push("/new")
     })
   }
 
