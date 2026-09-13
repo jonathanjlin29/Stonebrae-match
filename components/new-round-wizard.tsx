@@ -281,7 +281,10 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
                         type="number"
                         min={0}
                         value={m.nineBet}
-                        onChange={(e) => updateMatch(i, { nineBet: Number(e.target.value) })}
+                        onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, "")
+                      updateMatch(i, { nineBet: raw === "" ? 0 : Number(raw) })
+                    }}
                         className="h-9 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-3 text-center font-display text-lg tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                       />
                     </div>
@@ -295,7 +298,10 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
                         type="number"
                         min={0}
                         value={m.overallBet}
-                        onChange={(e) => updateMatch(i, { overallBet: Number(e.target.value) })}
+                        onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, "")
+                      updateMatch(i, { overallBet: raw === "" ? 0 : Number(raw) })
+                    }}
                         className="h-9 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-3 text-center font-display text-lg tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                       />
                     </div>

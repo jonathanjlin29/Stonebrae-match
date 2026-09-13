@@ -198,6 +198,17 @@ export async function deleteRound(roundId: number): Promise<{ ok: true } | { ok:
   return { ok: true }
 }
 
+export async function getActiveRoundForPlayer(playerId: number) {
+  const rows = await sql`
+    SELECT r.id
+    FROM rounds r
+    JOIN round_players rp ON rp.round_id = r.id
+    WHERE r.status = 'active' AND rp.player_id = ${playerId}
+    ORDER BY r.created_at DESC
+    LIMIT 1`
+  return rows[0]?.id as number | undefined
+}
+
 export async function getActiveRounds() {
   const rows = await sql`
     SELECT r.id, r.created_at, r.status,
