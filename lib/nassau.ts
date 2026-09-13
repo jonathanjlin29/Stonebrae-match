@@ -1,0 +1,174 @@
+import { COURSE } from "./course"
+import type { Match, Player, Scores } from "./types"
+
+// ─── HANDICAP HELPERS ──────────────────────────────────────────────
+export function getStrokesGiven(playerHcp: number, lowestHcp: number, holeHcp: number): number {
+  const diff = playerHcp - lowestHcp
+  if (diff <= 0) return 0
+  const base = Math.floor(diff / 18)
+  const extra = diff % 18
+  return base + (holeHcp <= extra ? 1 : 0)
+}
+
+type PlayerMap = Record<number, Player>
+
+function toPlayerMap(players: Player[]): PlayerMap {
+  const m: PlayerMap = {}
+  for (const p of players) m[p.id] = p
+  return m
+}
+
+// Returns cumulative status for team A over a hole range [start..end] (0-indexed inclusive)
+export function computeMatchStatus(
+  match: Match,
+  scores: Scores,
+  players: Player[],
+  start = 0,
+  end = 17,
+): { hole: number; holeWinner: "A" | "B" | "halved"; statusA: number }[] {
+  const map = toPlayerMap(players)
+  const all = [...match.teamA, ...match.teamB]
+  if (all.some((id) => !map[id])) return []
+
+  const lowestHcp = Math.min(...all.map((id) => map[id].handicap))
+  let cumulativeA = 0
+  const results: { hole: number; holeWinner: "A" | "B" | "halved"; statusA: number }[] = []
+
+  for (let h = start; h <= end; h++) {
+    const entered = all.every((id) => scores[id] && scores[id][h] != null)
+    if (!entered) continue
+    const hole = COURSE.holes[h]
+    const holeHcp = hole.hcp
+    let netA: number
+    let netB: number
+
+    if (match.type === "team") {
+      const nA = match.teamA.map((id) => (scores[id][h] as number) - getStrokesGiven(map[id].handicap, lowestHcp, holeHcp))
+      const nB = match.teamB.map((id) => (scores[id][h] as number) - getStrokesGiven(map[id].handicap, lowestHcp, holeHcp))
+      netA = Math.min(...nA)
+      netB = Math.min(...nB)
+    } else {
+      const idA = match.teamA[0]
+      const idB = match.teamB[0]
+      netA = (scores[idA][h] as number) - getStrokesGiven(map[idA].handicap, lowestHcp, holeHcp)
+      netB = (scores[idB][h] as number) - getStrokesGiven(map[idB].handicap, lowestHcp, holeHcp)
+    }
+
+    let holeWinner: "A" | "B" | "halved"
+    if (netA < netB) {
+      holeWinner = "A"
+      cumulativeA++
+    } else if (netB < netA) {
+      holeWinner = "B"
+      cumulativeA--
+    } else {
+      holeWinner = "halved"
+    }
+    results.push({ hole: h, holeWinner, statusA: cumulativeA })
+  }
+  return results
+}
+
+export function getMatchStatusLabel(statusA: number): string {
+  if (statusA === 0) return "AS"
+  if (statusA > 0) return `${statusA} UP`
+  return `${Math.abs(statusA)} DN`
+}
+
+function segmentWinner(match: Match, scores: Scores, players: Player[], start: number, end: number): "A" | "B" | "halved" | null {
+  const results = computeMatchStatus(match, scores, players, start, end)
+  if (results.length === 0) return null
+  const finalStatus = results[results.length - 1].statusA
+  if (finalStatus > 0) return "A"
+  if (finalStatus < 0) return "B"
+  return "halved"
+}
+
+// ─── MONEY ─────────────────────────────────────────────────────────
+// Nassau: front (1-9), back (10-18), overall (1-18) each worth `bet`.
+// Each press is worth `bet` over its own hole range.
+// Winning team collectively wins `bet`, split evenly; losing team splits the loss.
+export function computeMatchMoney(match: Match, scores: Scores, players: Player[]) {
+  const money: Record<number, number> = {}
+  for (const id of [...match.teamA, ...match.teamB]) money[id] = 0
+
+  const applySegment = (winner: "A" | "B" | "halved" | null) => {
+    if (!winner || winner === "halved") return
+    const winners = winner === "A" ? match.teamA : match.teamB
+    const losers = winner === "A" ? match.teamB : match.teamA
+    const winShare = match.bet / winners.length
+    const loseShare = match.bet / losers.length
+    for (const id of winners) money[id] += winShare
+    for (const id of losers) money[id] -= loseShare
+  }
+
+  const front = segmentWinner(match, scores, players, 0, 8)
+  const back = segmentWinner(match, scores, players, 9, 17)
+  const overall = segmentWinner(match, scores, players, 0, 17)
+  applySegment(front)
+  applySegment(back)
+  applySegment(overall)
+
+  const pressResults: Record<string, "A" | "B" | "halved" | null> = {}
+  for (const press of match.presses ?? []) {
+    const end = press.scope === "front" ? 8 : 17
+    const w = segmentWinner(match, scores, players, press.startHole, end)
+    pressResults[press.id] = w
+    applySegment(w)
+  }
+
+  return { money, results: { front, back, overall, pressResults } }
+}
+
+// ─── PERSONAL STAT DETECTORS ───────────────────────────────────────
+type Rel = "eagle" | "birdie" | "par" | "bogey" | "double+" | null
+
+export function relToPar(strokes: number | null, par: number): Rel {
+  if (strokes == null) return null
+  const d = strokes - par
+  if (d <= -2) return "eagle"
+  if (d === -1) return "birdie"
+  if (d === 0) return "par"
+  if (d === 1) return "bogey"
+  return "double+"
+}
+
+// A "bounce back": par or better immediately after a bogey or worse.
+export function isBounceBack(holeScores: (number | null)[], holeIndex: number): boolean {
+  if (holeIndex <= 0) return false
+  const prev = holeScores[holeIndex - 1]
+  const cur = holeScores[holeIndex]
+  if (prev == null || cur == null) return false
+  const prevPar = COURSE.holes[holeIndex - 1].par
+  const curPar = COURSE.holes[holeIndex].par
+  return prev - prevPar >= 1 && cur - curPar <= 0
+}
+
+// Current consecutive-birdie (or better) streak ending at holeIndex.
+export function birdieStreakEndingAt(holeScores: (number | null)[], holeIndex: number): number {
+  let streak = 0
+  for (let h = holeIndex; h >= 0; h--) {
+    const s = holeScores[h]
+    if (s == null) break
+    if (s - COURSE.holes[h].par <= -1) streak++
+    else break
+  }
+  return streak
+}
+
+export type PlayerAnalytics = {
+  roundsPlayed: number
+  totalMoney: number
+  frontAvg: number | null
+  backAvg: number | null
+  frontVsPar: number | null
+  backVsPar: number | null
+  bounceBackOpportunities: number
+  bounceBacks: number
+  bounceBackRate: number | null
+  fireHotStreaks: number // count of 2+ consecutive birdie sequences
+  longestBirdieStreak: number
+  pressesWon: number
+  pressesLost: number
+  pressesPlayed: number
+}
