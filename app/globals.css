@@ -3,31 +3,31 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f5f6f8;
+  --background: #ffffff;
   --surface: #ffffff;
-  --surface-2: #edeff3;
-  --border: #e0e3e9;
-  --foreground: #0e141b;
-  --muted: #5b6472;
-  --primary: #067a4a;
-  --primary-foreground: #f3fdf7;
-  --gold: #a3690a;
-  --danger: #c22b3a;
-  --shadow-color: 220 20% 60%;
+  --surface-2: #f5f5f9;
+  --border: #e4e6e9;
+  --foreground: #032615;
+  --muted: #6a717a;
+  --primary: #007a47;
+  --primary-foreground: #ffffff;
+  --gold: #b8860b;
+  --danger: #d2080f;
+  --shadow-color: 150 20% 55%;
 }
 
 .dark {
-  --background: #0a0f18;
-  --surface: #10161f;
-  --surface-2: #161e2b;
-  --border: #232c3b;
-  --foreground: #eef2f8;
-  --muted: #8a94a6;
-  --primary: #2fd57e;
-  --primary-foreground: #052712;
-  --gold: #f2b84b;
-  --danger: #f0596a;
-  --shadow-color: 220 60% 2%;
+  --background: #051a10;
+  --surface: #0a2416;
+  --surface-2: #0f2f1d;
+  --border: #1a3d27;
+  --foreground: #eef7f0;
+  --muted: #8fb09b;
+  --primary: #15c867;
+  --primary-foreground: #032615;
+  --gold: #ffd700;
+  --danger: #ff6b73;
+  --shadow-color: 150 60% 2%;
 }
 
 @theme inline {
