@@ -85,19 +85,20 @@ function segmentWinner(match: Match, scores: Scores, players: Player[], start: n
 }
 
 // ─── MONEY ─────────────────────────────────────────────────────────
-// Nassau: front (1-9), back (10-18), overall (1-18) each worth `bet`.
-// Each press is worth `bet` over its own hole range.
-// Winning team collectively wins `bet`, split evenly; losing team splits the loss.
+// Nassau: front (1-9) and back (10-18) are each worth `nineBet`; overall (1-18)
+// is worth `overallBet`. Each press is worth its parent segment's bet over its
+// own hole range. Winning team collectively wins the bet, split evenly; losing
+// team splits the loss.
 export function computeMatchMoney(match: Match, scores: Scores, players: Player[]) {
   const money: Record<number, number> = {}
   for (const id of [...match.teamA, ...match.teamB]) money[id] = 0
 
-  const applySegment = (winner: "A" | "B" | "halved" | null) => {
+  const applySegment = (winner: "A" | "B" | "halved" | null, amount: number) => {
     if (!winner || winner === "halved") return
     const winners = winner === "A" ? match.teamA : match.teamB
     const losers = winner === "A" ? match.teamB : match.teamA
-    const winShare = match.bet / winners.length
-    const loseShare = match.bet / losers.length
+    const winShare = amount / winners.length
+    const loseShare = amount / losers.length
     for (const id of winners) money[id] += winShare
     for (const id of losers) money[id] -= loseShare
   }
@@ -105,16 +106,16 @@ export function computeMatchMoney(match: Match, scores: Scores, players: Player[
   const front = segmentWinner(match, scores, players, 0, 8)
   const back = segmentWinner(match, scores, players, 9, 17)
   const overall = segmentWinner(match, scores, players, 0, 17)
-  applySegment(front)
-  applySegment(back)
-  applySegment(overall)
+  applySegment(front, match.nineBet)
+  applySegment(back, match.nineBet)
+  applySegment(overall, match.overallBet)
 
   const pressResults: Record<string, "A" | "B" | "halved" | null> = {}
   for (const press of match.presses ?? []) {
     const end = press.scope === "front" ? 8 : 17
     const w = segmentWinner(match, scores, players, press.startHole, end)
     pressResults[press.id] = w
-    applySegment(w)
+    applySegment(w, match.nineBet)
   }
 
   return { money, results: { front, back, overall, pressResults } }

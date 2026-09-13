@@ -11,7 +11,8 @@ type MatchConfig = {
   type: "singles" | "team"
   teamA: number[]
   teamB: number[]
-  bet: number
+  nineBet: number
+  overallBet: number
 }
 
 export async function createRound(input: {
@@ -35,8 +36,8 @@ export async function createRound(input: {
 
   for (const m of input.matches) {
     await sql`
-      INSERT INTO matches (round_id, type, team_a, team_b, bet)
-      VALUES (${roundId}, ${m.type}, ${JSON.stringify(m.teamA)}, ${JSON.stringify(m.teamB)}, ${m.bet})`
+      INSERT INTO matches (round_id, type, team_a, team_b, nine_bet, overall_bet)
+      VALUES (${roundId}, ${m.type}, ${JSON.stringify(m.teamA)}, ${JSON.stringify(m.teamB)}, ${m.nineBet}, ${m.overallBet})`
   }
 
   revalidatePath("/")
@@ -79,7 +80,8 @@ export async function getRound(id: number): Promise<Round | null> {
     type: row.type,
     teamA: row.team_a,
     teamB: row.team_b,
-    bet: Number(row.bet),
+    nineBet: Number(row.nine_bet),
+    overallBet: Number(row.overall_bet),
     presses: row.presses ?? [],
     results: row.results ?? { front: null, back: null, overall: null, pressResults: {} },
     money: row.money ?? {},

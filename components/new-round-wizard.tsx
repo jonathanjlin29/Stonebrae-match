@@ -13,7 +13,8 @@ type MatchDraft = {
   type: "singles" | "team"
   teamA: number[]
   teamB: number[]
-  bet: number
+  nineBet: number
+  overallBet: number
 }
 
 export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; currentPlayer: Player }) {
@@ -64,9 +65,11 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
   function autoMatch() {
     // Sensible default matches based on the selected group.
     if (selectedPlayers.length === 2) {
-      setMatches([{ type: "singles", teamA: [selected[0]], teamB: [selected[1]], bet: 10 }])
+      setMatches([{ type: "singles", teamA: [selected[0]], teamB: [selected[1]], nineBet: 10, overallBet: 10 }])
     } else if (selectedPlayers.length === 4) {
-      setMatches([{ type: "team", teamA: [selected[0], selected[1]], teamB: [selected[2], selected[3]], bet: 20 }])
+      setMatches([
+        { type: "team", teamA: [selected[0], selected[1]], teamB: [selected[2], selected[3]], nineBet: 20, overallBet: 20 },
+      ])
     } else {
       setMatches([])
     }
@@ -83,7 +86,10 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
   }
 
   function addMatch() {
-    setMatches((m) => [...m, { type: "singles", teamA: [selected[0]], teamB: [selected[1]], bet: 10 }])
+    setMatches((m) => [
+      ...m,
+      { type: "singles", teamA: [selected[0]], teamB: [selected[1]], nineBet: 10, overallBet: 10 },
+    ])
   }
 
   function updateMatch(i: number, patch: Partial<MatchDraft>) {
@@ -260,17 +266,31 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
                   />
                 </div>
 
-                <label className="mt-3 flex items-center gap-2 text-sm">
-                  <span className="text-[var(--color-muted)]">Bet per segment</span>
-                  <span className="text-[var(--color-gold)]">$</span>
-                  <input
-                    type="number"
-                    value={m.bet}
-                    onChange={(e) => updateMatch(i, { bet: Number(e.target.value) })}
-                    className="h-9 w-20 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 text-center outline-none focus:border-[var(--color-primary)]"
-                  />
-                  <span className="text-xs text-[var(--color-muted)]">× front / back / overall</span>
-                </label>
+                <div className="mt-3 flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-[var(--color-muted)]">Bet per nine</span>
+                    <span className="text-[var(--color-gold)]">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={m.nineBet}
+                      onChange={(e) => updateMatch(i, { nineBet: Number(e.target.value) })}
+                      className="h-9 w-20 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 text-center outline-none focus:border-[var(--color-primary)]"
+                    />
+                    <span className="text-xs text-[var(--color-muted)]">× front / back</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-[var(--color-muted)]">Bet overall</span>
+                    <span className="text-[var(--color-gold)]">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={m.overallBet}
+                      onChange={(e) => updateMatch(i, { overallBet: Number(e.target.value) })}
+                      className="h-9 w-20 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 text-center outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </label>
+                </div>
               </Card>
             ))}
           </div>

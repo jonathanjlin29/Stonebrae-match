@@ -243,7 +243,9 @@ function MatchCard({
           <Flag className="h-4 w-4 text-[var(--color-primary)]" />
           {teamAName} <span className="text-[var(--color-muted)]">vs</span> {teamBName}
         </p>
-        <Badge>${match.bet} · Nassau</Badge>
+        <Badge>
+          ${match.nineBet}/9 · ${match.overallBet} ovr
+        </Badge>
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         <StatusRow label="Front" value={frontLabel} canPress={canPressFront} onPress={() => onPress(match, "front")} />

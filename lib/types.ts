@@ -33,7 +33,8 @@ export type Match = {
   type: "singles" | "team"
   teamA: number[]
   teamB: number[]
-  bet: number
+  nineBet: number
+  overallBet: number
   presses: Press[]
   results: MatchResults
   money: Record<string, number>
