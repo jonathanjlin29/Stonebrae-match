@@ -7,7 +7,7 @@ import { createPlayer } from "@/app/actions/players"
 import { createRound } from "@/app/actions/rounds"
 import type { Player } from "@/lib/types"
 import { playerLabel, shortLabel } from "@/lib/util"
-import { Button, Card, PlayerAvatar } from "./ui"
+import { Button, Card, PlayerAvatar, SegmentedControl } from "./ui"
 
 type MatchDraft = {
   type: "singles" | "team"
@@ -128,7 +128,7 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-2">
+      <div className="mb-7 flex items-center gap-2">
         <StepDot n={1} active={step === 1} done={step > 1} label="Players" />
         <div className="h-px flex-1 bg-[var(--color-border)]" />
         <StepDot n={2} active={step === 2} done={false} label="Matches" />
@@ -136,33 +136,35 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
 
       {step === 1 && (
         <div>
-          <h1 className="mb-1 font-display text-4xl">Who&apos;s in the group?</h1>
-          <p className="mb-5 text-[var(--color-muted)]">Select existing players or add someone new. Set handicaps.</p>
+          <h1 className="mb-1 font-display text-3xl tracking-tight sm:text-4xl">Who&apos;s in the group?</h1>
+          <p className="mb-6 text-sm text-[var(--color-muted)]">
+            Select existing players or add someone new. Set handicaps.
+          </p>
 
-          <div className="mb-4 grid gap-2">
+          <Card className="ios-list mb-5 overflow-hidden p-0">
             {roster.map((p) => {
               const on = selected.includes(p.id)
               return (
                 <div
                   key={p.id}
-                  className={`flex items-center gap-3 rounded-[var(--radius)] border p-3 transition-colors ${
-                    on ? "border-[var(--color-primary)] bg-[var(--color-surface-2)]" : "border-[var(--color-border)] bg-[var(--color-surface)]"
-                  }`}
+                  className={`flex items-center gap-3 p-3.5 transition-colors sm:px-5 ${on ? "bg-[var(--color-primary)]/[0.06]" : ""}`}
                 >
                   <button
                     onClick={() => toggle(p.id, p.handicap)}
-                    className={`flex h-6 w-6 items-center justify-center rounded-md border ${
-                      on ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "border-[var(--color-border)]"
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors ${
+                      on
+                        ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+                        : "bg-[var(--color-surface-2)] text-transparent"
                     }`}
                     aria-label={on ? `Remove ${p.name}` : `Add ${p.name}`}
                   >
-                    {on && <Check className="h-4 w-4" strokeWidth={3} />}
+                    <Check className="h-3.5 w-3.5" strokeWidth={3} />
                   </button>
                   <PlayerAvatar player={p} />
-                  <span className="flex-1 font-medium">{playerLabel(p)}</span>
+                  <span className="flex-1 truncate font-medium">{playerLabel(p)}</span>
                   {on && (
-                    <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
-                      <span>Hcp</span>
+                    <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-muted)]">
+                      <span>HCP</span>
                       <HandicapStepper
                         value={handicaps[p.id] ?? 0}
                         onChange={(v) => setHandicaps((h) => ({ ...h, [p.id]: v }))}
@@ -172,25 +174,25 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
                 </div>
               )
             })}
-          </div>
+          </Card>
 
-          <Card className="mb-4 p-4">
-            <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
-              <Plus className="h-4 w-4" /> Add a new player
+          <Card className="mb-5 p-4 sm:p-5">
+            <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
+              <Plus className="h-4 w-4 text-[var(--color-primary)]" /> Add a new player
             </p>
             <form onSubmit={addNewPlayer} className="flex flex-wrap gap-2">
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="First name"
-                className="h-11 min-w-32 flex-1 rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 outline-none focus:border-[var(--color-primary)]"
+                className="h-11 min-w-32 flex-1 rounded-full bg-[var(--color-surface-2)] px-4 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                 required
               />
               <input
                 value={newLast}
                 onChange={(e) => setNewLast(e.target.value)}
                 placeholder="Last (if name taken)"
-                className="h-11 min-w-32 flex-1 rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 outline-none focus:border-[var(--color-primary)]"
+                className="h-11 min-w-32 flex-1 rounded-full bg-[var(--color-surface-2)] px-4 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               />
               <Button type="submit" variant="outline" disabled={pending}>
                 Add
@@ -208,36 +210,26 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
 
       {step === 2 && (
         <div>
-          <h1 className="mb-1 font-display text-4xl">Set the matches</h1>
-          <p className="mb-5 text-[var(--color-muted)]">
+          <h1 className="mb-1 font-display text-3xl tracking-tight sm:text-4xl">Set the matches</h1>
+          <p className="mb-6 text-sm text-[var(--color-muted)]">
             Each match is a Nassau: front 9, back 9, and overall — plus any presses during the round.
           </p>
 
           <div className="grid gap-4">
             {matches.map((m, i) => (
-              <Card key={i} className="p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex rounded-lg border border-[var(--color-border)] p-0.5">
-                    <button
-                      onClick={() => updateMatch(i, { type: "singles" })}
-                      className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium ${
-                        m.type === "singles" ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "text-[var(--color-muted)]"
-                      }`}
-                    >
-                      <User className="h-4 w-4" /> Singles
-                    </button>
-                    <button
-                      onClick={() => updateMatch(i, { type: "team" })}
-                      className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium ${
-                        m.type === "team" ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]" : "text-[var(--color-muted)]"
-                      }`}
-                    >
-                      <Users className="h-4 w-4" /> Team
-                    </button>
-                  </div>
+              <Card key={i} className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <SegmentedControl
+                    value={m.type}
+                    onChange={(v) => updateMatch(i, { type: v })}
+                    options={[
+                      { value: "singles", label: "Singles" },
+                      { value: "team", label: "Team" },
+                    ]}
+                  />
                   <button
                     onClick={() => setMatches((ms) => ms.filter((_, idx) => idx !== i))}
-                    className="rounded-md p-1.5 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-danger)]"
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-danger)]"
                     aria-label="Remove match"
                   >
                     <X className="h-4 w-4" />
@@ -253,7 +245,7 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
                     disabledIds={m.teamB}
                     onChange={(ids) => setSide(i, "teamA", ids)}
                   />
-                  <span className="text-center font-display text-2xl text-[var(--color-muted)]">vs</span>
+                  <span className="text-center font-display text-xl text-[var(--color-muted)]">vs</span>
                   <TeamPicker
                     label="Team B"
                     players={selectedPlayers}
@@ -264,30 +256,34 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
                   />
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <span className="text-[var(--color-muted)]">Bet per nine</span>
-                    <span className="text-[var(--color-gold)]">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={m.nineBet}
-                      onChange={(e) => updateMatch(i, { nineBet: Number(e.target.value) })}
-                      className="h-9 w-20 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 text-center outline-none focus:border-[var(--color-primary)]"
-                    />
-                    <span className="text-xs text-[var(--color-muted)]">× front / back</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <span className="text-[var(--color-muted)]">Bet overall</span>
-                    <span className="text-[var(--color-gold)]">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={m.overallBet}
-                      onChange={(e) => updateMatch(i, { overallBet: Number(e.target.value) })}
-                      className="h-9 w-20 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 text-center outline-none focus:border-[var(--color-primary)]"
-                    />
-                  </label>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-[var(--color-surface-2)] p-3">
+                    <p className="mb-1.5 text-xs font-semibold text-[var(--color-muted)]">Bet per nine</p>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-display text-lg text-[var(--color-gold)]">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={m.nineBet}
+                        onChange={(e) => updateMatch(i, { nineBet: Number(e.target.value) })}
+                        className="h-9 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-3 text-center font-display text-lg tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                      />
+                    </div>
+                    <p className="mt-1 text-[11px] text-[var(--color-muted)]">× front / back</p>
+                  </div>
+                  <div className="rounded-2xl bg-[var(--color-surface-2)] p-3">
+                    <p className="mb-1.5 text-xs font-semibold text-[var(--color-muted)]">Bet overall</p>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-display text-lg text-[var(--color-gold)]">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={m.overallBet}
+                        onChange={(e) => updateMatch(i, { overallBet: Number(e.target.value) })}
+                        className="h-9 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-3 text-center font-display text-lg tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                      />
+                    </div>
+                  </div>
                 </div>
               </Card>
             ))}
@@ -299,7 +295,7 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
 
           {error && <p className="mt-3 text-sm text-[var(--color-danger)]">{error}</p>}
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-5 flex gap-2">
             <Button variant="ghost" onClick={() => setStep(1)}>
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>

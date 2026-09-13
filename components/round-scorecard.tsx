@@ -111,17 +111,17 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
     <div className="mx-auto max-w-5xl px-4 py-8">
       <CelebrationOverlay celebration={celebration} />
 
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-[var(--color-muted)]">{round.courseName}</p>
-          <h1 className="font-display text-4xl">Match Scorecard</h1>
+          <p className="text-sm font-medium text-[var(--color-muted)]">{round.courseName}</p>
+          <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Match Scorecard</h1>
         </div>
         {isActive ? (
           <Button onClick={finish} disabled={completing} variant="gold">
             <CheckCircle2 className="h-4 w-4" /> {completing ? "Finishing…" : "Complete Round"}
           </Button>
         ) : (
-          <Badge className="gap-1.5 border-[var(--color-gold)] text-[var(--color-gold)]">
+          <Badge className="gap-1.5 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
             <Lock className="h-3.5 w-3.5" /> Final
           </Badge>
         )}
@@ -144,15 +144,19 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
         <table className="w-full min-w-[900px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-[var(--color-border)] text-[var(--color-muted)]">
-              <th className="sticky left-0 z-10 bg-[var(--color-surface)] px-3 py-2 text-left font-medium">Player</th>
+              <th className="sticky left-0 z-10 bg-[var(--color-surface)] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">
+                Player
+              </th>
               {COURSE.holes.map((h) => (
-                <th key={h.hole} className="px-1.5 py-2 text-center font-medium">
+                <th key={h.hole} className="px-1.5 py-3 text-center font-medium tabular">
                   <div>{h.hole}</div>
                   <div className="text-[10px] opacity-70">Par {h.par}</div>
                 </th>
               ))}
-              <th className="px-2 py-2 text-center font-semibold text-[var(--color-foreground)]">Tot</th>
-              <th className="px-3 py-2 text-center font-semibold">Money</th>
+              <th className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-foreground)]">
+                Tot
+              </th>
+              <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide">Money</th>
             </tr>
           </thead>
           <tbody>
@@ -162,7 +166,7 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
               const playedAny = holes.some((v: number | null) => v != null)
               return (
                 <tr key={p.id} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="sticky left-0 z-10 bg-[var(--color-surface)] px-3 py-2 font-medium">
+                  <td className="sticky left-0 z-10 bg-[var(--color-surface)] px-4 py-2 font-medium">
                     <div className="flex items-center gap-2">
                       <PlayerAvatar player={p} size="sm" />
                       <span>{shortLabel(p)}</span>
@@ -189,18 +193,18 @@ export function RoundScorecard({ round, currentPlayerId }: { round: Round; curre
                             value={v ?? ""}
                             onChange={(e) => updateScore(p.id, h, e.target.value)}
                             onBlur={() => commitScore(p.id, h)}
-                            className={`h-9 w-9 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-center outline-none focus:border-[var(--color-primary)] ${relClass}`}
+                            className={`h-9 w-9 rounded-full bg-[var(--color-surface-2)] text-center font-semibold tabular outline-none transition-shadow focus:ring-2 focus:ring-[var(--color-primary)] ${relClass}`}
                           />
                         ) : (
-                          <span className={`inline-flex h-9 w-9 items-center justify-center font-semibold ${relClass}`}>
+                          <span className={`inline-flex h-9 w-9 items-center justify-center font-semibold tabular ${relClass}`}>
                             {v ?? "–"}
                           </span>
                         )}
                       </td>
                     )
                   })}
-                  <td className="px-2 py-2 text-center font-display text-lg">{playedAny ? tot : "–"}</td>
-                  <td className={`px-3 py-2 text-center font-display text-lg ${moneyClass(totals[p.id] ?? 0)}`}>
+                  <td className="px-2 py-2 text-center font-display text-lg tabular">{playedAny ? tot : "–"}</td>
+                  <td className={`px-3 py-2 text-center font-display text-lg tabular ${moneyClass(totals[p.id] ?? 0)}`}>
                     {formatMoney(totals[p.id] ?? 0)}
                   </td>
                 </tr>
@@ -244,17 +248,17 @@ function MatchCard({
   const canPressBack = isActive && back.length > 0 && back.length < 9 && back[back.length - 1].statusA !== 0
 
   return (
-    <Card className="p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <Card className="p-4 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 font-semibold">
-          <Flag className="h-4 w-4 text-[var(--color-primary)]" />
+          <Flag className="h-4 w-4 shrink-0 text-[var(--color-primary)]" />
           <div className="flex -space-x-2">
             {teamAPlayers.map((p) => (
               <PlayerAvatar key={p.id} player={p} size="sm" />
             ))}
           </div>
           <span>{teamAName}</span>
-          <span className="text-[var(--color-muted)]">vs</span>
+          <span className="font-display text-sm text-[var(--color-muted)]">vs</span>
           <span>{teamBName}</span>
           <div className="flex -space-x-2">
             {teamBPlayers.map((p) => (
@@ -262,7 +266,7 @@ function MatchCard({
             ))}
           </div>
         </div>
-        <Badge>
+        <Badge className="tabular">
           ${match.nineBet}/9 · ${match.overallBet} ovr
         </Badge>
       </div>
@@ -274,7 +278,7 @@ function MatchCard({
       {match.presses.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {match.presses.map((p) => (
-            <Badge key={p.id} className="gap-1 text-[var(--color-gold)]">
+            <Badge key={p.id} className="gap-1 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
               <Swords className="h-3 w-3" /> Press · hole {p.startHole + 1}
             </Badge>
           ))}
@@ -296,15 +300,15 @@ function StatusRow({
   onPress: () => void
 }) {
   return (
-    <div className="flex items-center justify-between rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2">
+    <div className="flex items-center justify-between rounded-2xl bg-[var(--color-surface-2)] px-4 py-2.5">
       <div>
-        <p className="text-xs text-[var(--color-muted)]">{label}</p>
-        <p className="font-display text-lg">{value}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+        <p className="font-display text-lg tracking-tight">{value}</p>
       </div>
       {canPress && (
         <button
           onClick={onPress}
-          className="rounded-md bg-[var(--color-gold)] px-2 py-1 text-xs font-semibold text-[#2a1e00] hover:brightness-110"
+          className="rounded-full bg-[var(--color-gold)] px-3 py-1.5 text-xs font-bold text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-95 hover:brightness-105"
         >
           Press
         </button>
@@ -332,10 +336,8 @@ function CelebrationOverlay({ celebration }: { celebration: Celebration | null }
             />
           ))}
         <div
-          className={`animate-rise flex items-center gap-3 rounded-2xl border px-6 py-4 shadow-2xl backdrop-blur ${
-            isFire
-              ? "border-[var(--color-danger)] bg-[var(--color-surface)]"
-              : "border-[var(--color-primary)] bg-[var(--color-surface)]"
+          className={`glass animate-rise flex items-center gap-3 rounded-[28px] px-6 py-4 shadow-2xl ${
+            isFire ? "ring-1 ring-[var(--color-danger)]/40" : "ring-1 ring-[var(--color-primary)]/40"
           }`}
         >
           <span className="animate-pop">

@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next"
-import { Oswald, Inter } from "next/font/google"
+import { Outfit, Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
-const display = Oswald({
-  weight: ["500", "600", "700"],
+const display = Outfit({
+  weight: ["500", "600", "700", "800"],
   subsets: ["latin"],
   variable: "--font-display",
 })
@@ -23,8 +23,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f6f8" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0f18" },
+    { media: "(prefers-color-scheme: light)", color: "#f2f3f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0d10" },
   ],
   width: "device-width",
   initialScale: 1,
