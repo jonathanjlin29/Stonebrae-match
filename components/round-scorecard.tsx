@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2 } from "lucide-react"
+import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2 } from "lucide-react"
 import { saveScore, addPress, completeRound, deleteRound } from "@/app/actions/rounds"
 import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
@@ -26,10 +26,12 @@ export function RoundScorecard({
   round,
   currentPlayerId,
   isAdmin = false,
+  isPublicView = false,
 }: {
   round: Round
   currentPlayerId: number | null
   isAdmin?: boolean
+  isPublicView?: boolean
 }) {
   const router = useRouter()
   const [, start] = useTransition()
@@ -57,7 +59,7 @@ export function RoundScorecard({
   }))
   const lowestHandicap = players.length > 0 ? Math.min(...players.map((p) => p.handicap)) : 0
   const isActive = round.status === "active"
-  const canEditScores = isActive || isAdmin
+  const canEditScores = !isPublicView && (isActive || isAdmin)
 
   // Keep local state in sync whenever the server component re-fetches (poll or manual refresh),
   // but preserve any cell that's still being edited/saved so in-flight input isn't overwritten.
@@ -72,7 +74,7 @@ export function RoundScorecard({
     if (!isActive) return
     const interval = setInterval(() => {
       router.refresh()
-    }, 5 * 60 * 1000)
+    }, 30 * 1000)
     return () => clearInterval(interval)
   }, [isActive, router])
 
@@ -210,7 +212,7 @@ export function RoundScorecard({
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
-          {isActive ? (
+          {!isPublicView && (isActive ? (
             <Button onClick={finish} disabled={completing} variant="gold">
               <CheckCircle2 className="h-4 w-4" /> {completing ? "Finishing…" : "Complete Round"}
             </Button>
@@ -218,8 +220,8 @@ export function RoundScorecard({
             <Badge className="gap-1.5 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
               <Lock className="h-3.5 w-3.5" /> Final
             </Badge>
-          )}
-          {(isAdmin || (currentPlayerId != null && currentPlayerId === round.createdBy)) &&
+          ))}
+          {!isPublicView && (isAdmin || (currentPlayerId != null && currentPlayerId === round.createdBy)) &&
             (confirmingDelete ? (
               <div className="flex items-center gap-1.5">
                 <Button onClick={handleDelete} disabled={deleting} variant="danger">
@@ -245,6 +247,8 @@ export function RoundScorecard({
             ))}
         </div>
       </div>
+
+      {!isPublicView && <SharePanel roundId={round.id} />}
 
       {deleteError ? (
         <div className="mb-4 rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2.5 text-sm text-[var(--color-danger)]">
@@ -509,6 +513,30 @@ export function RoundScorecard({
           </div>
         </div>
       </Card>
+    </div>
+  )
+}
+
+function SharePanel({ roundId }: { roundId: number }) {
+  const [copied, setCopied] = useState(false)
+  const shareUrl = typeof window === "undefined" ? "" : `${window.location.origin}/share/${roundId}`
+
+  async function copyUrl() {
+    await navigator.clipboard.writeText(`${window.location.origin}/share/${roundId}`)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1800)
+  }
+
+  return (
+    <div className="mb-5 rounded-xl border border-[var(--color-gold)]/25 bg-[var(--color-gold)]/8 p-4">
+      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--color-foreground)]">
+        <Link2 className="h-4 w-4 text-[var(--color-gold)]" /> Public score link
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input readOnly value={shareUrl} aria-label="Public score URL" className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-muted)]" />
+        <Button onClick={copyUrl} variant="outline" className="shrink-0"><Copy className="h-4 w-4" /> {copied ? "Copied" : "Copy link"}</Button>
+      </div>
+      <p className="mt-2 text-xs text-[var(--color-muted)]">Anyone with this link can view live scores and matches without signing in.</p>
     </div>
   )
 }
