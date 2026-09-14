@@ -46,6 +46,20 @@ export async function getQueuedMutations(): Promise<OfflineMutation[]> {
   })
 }
 
+export async function replayQueuedMutations() {
+  if (typeof window === "undefined" || !navigator.onLine) return
+  const queued = await getQueuedMutations()
+  for (const mutation of queued) {
+    const response = await fetch("/api/offline-sync", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: mutation.action, payload: mutation.payload, idempotencyKey: mutation.id }),
+    })
+    if (!response.ok) break
+    await removeQueuedMutation(mutation.id)
+  }
+}
+
 export async function removeQueuedMutation(id: string) {
   const db = await openDb()
   await new Promise<void>((resolve, reject) => {

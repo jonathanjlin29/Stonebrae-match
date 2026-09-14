@@ -3,7 +3,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2 } from "lucide-react"
-import { saveScore, addPress, completeRound, deleteRound } from "@/app/actions/rounds"
+import { deleteRound } from "@/app/actions/rounds"
+import { saveScoreOffline, addPressOffline, completeRoundOffline } from "@/lib/offline-actions"
 import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
   computeMatchMoney,
@@ -142,7 +143,7 @@ export function RoundScorecard({
     const key = `${playerId}:${hole}`
     const value = scores[playerId]?.[hole] ?? null
     start(async () => {
-      await saveScore(round.id, playerId, hole, value)
+      await saveScoreOffline(round.id, playerId, hole, value)
       dirtyRef.current.delete(key)
     })
   }
@@ -156,7 +157,7 @@ export function RoundScorecard({
     const initiatedBy = last.statusA > 0 ? "B" : "A"
     const startHole = start_ + status.length
     start(async () => {
-      const res = await addPress(round.id, match.id, scope, startHole, initiatedBy)
+      const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy)
       if (res.ok) {
         setMatches((prev) =>
           prev.map((m) =>
@@ -172,7 +173,7 @@ export function RoundScorecard({
   function finish() {
     setCompleting(true)
     start(async () => {
-      await completeRound(round.id)
+      await completeRoundOffline(round.id)
       router.push("/")
       router.refresh()
     })
