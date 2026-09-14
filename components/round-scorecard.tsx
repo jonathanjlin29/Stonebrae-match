@@ -17,7 +17,7 @@ import {
   getStrokesGiven,
 } from "@/lib/nassau"
 import { COURSE } from "@/lib/course"
-import type { Match, Round, Scores } from "@/lib/types"
+import type { Match, Press, Round, Scores } from "@/lib/types"
 import { formatMoney, moneyClass, shortLabel } from "@/lib/util"
 import { Button, Card, Badge, PlayerAvatar, SegmentedControl } from "./ui"
 
@@ -280,19 +280,30 @@ export function RoundScorecard({
 
       <section className={`mb-6 grid gap-3 ${tab === "matches" ? "" : "hidden"}`}>
         {matches.map((m) => (
-          <MatchCard
-            key={m.id}
-            match={m}
-            scores={scores}
-            players={players}
-            isActive={isActive}
-  isAdmin={isAdmin}
-  currentPlayerId={currentPlayerId}
-  onPress={pressScope}
-            onBetsChanged={(matchId, nineBet, overallBet) =>
-              setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
-            }
-          />
+          <Fragment key={m.id}>
+            <MatchCard
+              match={m}
+              scores={scores}
+              players={players}
+              isActive={isActive}
+              isAdmin={isAdmin}
+              currentPlayerId={currentPlayerId}
+              onPress={pressScope}
+              onBetsChanged={(matchId, nineBet, overallBet) =>
+                setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
+              }
+            />
+            {m.presses.map((p) => (
+              <PressCard
+                key={p.id}
+                press={p}
+                match={m}
+                scores={scores}
+                players={players}
+                currentPlayerId={currentPlayerId}
+              />
+            ))}
+          </Fragment>
         ))}
       </section>
 
@@ -655,17 +666,6 @@ function MatchCard({
         <StatusRow label="Back" value={backLabel} />
         <StatusRow label="Overall" value={overallLabel} />
       </div>
-      {match.presses.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {match.presses.map((p) => (
-            <Badge key={p.id} className="gap-1 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
-              <Swords className="h-3 w-3" />
-              {p.scope === "overall" ? "Overall press" : `${p.scope === "front" ? "Front" : "Back"} press`} · hole {p.startHole + 1}
-              {p.amount != null ? ` · $${p.amount}` : ""}
-            </Badge>
-          ))}
-        </div>
-      )}
       {canPressAny && (
         <div className="mt-4 border-t border-[var(--color-border)] pt-4">
           {!pressOpen ? (
@@ -742,7 +742,7 @@ function BetEditor({
 }) {
   const [nineBet, setNineBet] = useState(String(match.nineBet))
   const [overallBet, setOverallBet] = useState(String(match.overallBet))
-  const [pending, start] = useTransition()
+  const [, start] = useTransition()
 
   function commit() {
     const n = Math.max(0, Number(nineBet) || 0)
@@ -757,28 +757,85 @@ function BetEditor({
   }
 
   return (
-    <div className="flex items-center gap-1.5 text-xs">
+    <div className="flex items-center gap-1 text-sm font-semibold tabular">
       <span className="text-[var(--color-muted)]">$</span>
       <input
         type="number"
         value={nineBet}
         onChange={(e) => setNineBet(e.target.value)}
         onBlur={commit}
-        disabled={pending}
-        className="h-7 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+        className="h-7 w-12 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1 text-center outline-none focus:border-[var(--color-primary)]"
       />
-      <span className="text-[var(--color-muted)]">/9 ·</span>
-      <span className="text-[var(--color-muted)]">$</span>
+      <span className="text-[var(--color-muted)]">/9 · $</span>
       <input
         type="number"
         value={overallBet}
         onChange={(e) => setOverallBet(e.target.value)}
         onBlur={commit}
-        disabled={pending}
-        className="h-7 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+        className="h-7 w-12 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1 text-center outline-none focus:border-[var(--color-primary)]"
       />
       <span className="text-[var(--color-muted)]">ovr</span>
     </div>
+  )
+}
+
+function PressCard({
+  press,
+  match,
+  scores,
+  players,
+  currentPlayerId,
+}: {
+  press: Press
+  match: Match
+  scores: Scores
+  players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
+  currentPlayerId: number | null
+}) {
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]))
+  const teamAName = match.teamA.map((id) => shortLabel(byId[id])).join(" & ")
+  const teamBName = match.teamB.map((id) => shortLabel(byId[id])).join(" & ")
+  const teamAPlayers = match.teamA.map((id) => byId[id]).filter(Boolean)
+  const teamBPlayers = match.teamB.map((id) => byId[id]).filter(Boolean)
+
+  const end = press.scope === "front" ? 8 : 17
+  const status = computeMatchStatus(match, scores, players, press.startHole, end)
+  const label = status.length ? getMatchStatusLabel(status[status.length - 1].statusA) : "Not started"
+  const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
+  const statusVal = status.length ? status[status.length - 1].statusA * (currentTeam === "B" ? -1 : 1) : 0
+  const statusTone =
+    statusVal < 0
+      ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
+      : statusVal > 0
+        ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
+        : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
+
+  const scopeLabel = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front Nine" : "Back Nine"
+
+  return (
+    <Card className={`ml-3 border-l-4 p-4 transition-colors sm:p-5 ${statusTone}`}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Swords className="h-4 w-4 shrink-0 text-[var(--color-gold)]" />
+          <Badge className="bg-[var(--color-gold)]/15 text-[var(--color-gold)]">Press</Badge>
+          <div className="flex -space-x-2">
+            {teamAPlayers.map((p) => (
+              <PlayerAvatar key={p.id} player={p} size="sm" />
+            ))}
+          </div>
+          <span>{teamAName}</span>
+          <span className="font-display text-xs text-[var(--color-muted)]">vs</span>
+          <span>{teamBName}</span>
+          <div className="flex -space-x-2">
+            {teamBPlayers.map((p) => (
+              <PlayerAvatar key={p.id} player={p} size="sm" />
+            ))}
+          </div>
+        </div>
+        <Badge className="tabular">${press.amount}</Badge>
+      </div>
+      <StatusRow label={`${scopeLabel} · from hole ${press.startHole + 1}`} value={label} />
+    </Card>
   )
 }
 
