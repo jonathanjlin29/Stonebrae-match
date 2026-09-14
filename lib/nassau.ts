@@ -84,11 +84,23 @@ function segmentWinner(match: Match, scores: Scores, players: Player[], start: n
   return "halved"
 }
 
+// Divides a whole-dollar amount into `n` whole-dollar shares as evenly as possible.
+// The remainder (if any) is distributed one dollar at a time to the first shares, so
+// the returned shares always sum exactly to `amount`.
+export function splitInteger(amount: number, n: number): number[] {
+  if (n <= 0) return []
+  const whole = Math.round(amount)
+  const base = Math.floor(whole / n)
+  const remainder = whole - base * n
+  return Array.from({ length: n }, (_, i) => base + (i < remainder ? 1 : 0))
+}
+
 // ─── MONEY ─────────────────────────────────────────────────────────
 // Nassau: front (1-9) and back (10-18) are each worth `nineBet`; overall (1-18)
 // is worth `overallBet`. Each press is worth its parent segment's bet over its
 // own hole range. Winning team collectively wins the bet, split evenly; losing
-// team splits the loss.
+// team splits the loss. All splits use whole dollars so every player's money is
+// an integer and each segment nets to exactly zero across both teams.
 export function computeMatchMoney(match: Match, scores: Scores, players: Player[]) {
   const money: Record<number, number> = {}
   for (const id of [...match.teamA, ...match.teamB]) money[id] = 0
@@ -97,10 +109,10 @@ export function computeMatchMoney(match: Match, scores: Scores, players: Player[
     if (!winner || winner === "halved") return
     const winners = winner === "A" ? match.teamA : match.teamB
     const losers = winner === "A" ? match.teamB : match.teamA
-    const winShare = amount / winners.length
-    const loseShare = amount / losers.length
-    for (const id of winners) money[id] += winShare
-    for (const id of losers) money[id] -= loseShare
+    const winShares = splitInteger(Math.round(amount), winners.length)
+    const loseShares = splitInteger(Math.round(amount), losers.length)
+    winners.forEach((id, i) => (money[id] += winShares[i]))
+    losers.forEach((id, i) => (money[id] -= loseShares[i]))
   }
 
   const front = segmentWinner(match, scores, players, 0, 8)

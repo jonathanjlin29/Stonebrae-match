@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2 } from "lucide-react"
+import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
 import { saveScoreOffline, addPressOffline, completeRoundOffline } from "@/lib/offline-actions"
 import { cachePage } from "@/lib/offline-store"
@@ -16,13 +16,14 @@ import {
   relToPar,
   getStrokesGiven,
 } from "@/lib/nassau"
+import { computeSettlement } from "@/lib/settlement"
 import { COURSE } from "@/lib/course"
 import type { Match, Press, Round, Scores } from "@/lib/types"
 import { formatMoney, moneyClass, shortLabel } from "@/lib/util"
 import { Button, Card, Badge, PlayerAvatar, SegmentedControl } from "./ui"
 
 type Celebration = { type: "bounce" | "fire" | "birdie"; name: string; detail: string; key: number }
-type Tab = "matches" | "scorecard"
+type Tab = "matches" | "scorecard" | "money"
 
 export function RoundScorecard({
   round,
@@ -274,9 +275,14 @@ export function RoundScorecard({
           options={[
             { value: "scorecard", label: "Scorecard" },
             { value: "matches", label: "Matches" },
+            { value: "money", label: "Money" },
           ]}
         />
       </div>
+
+      <section className={`mb-6 ${tab === "money" ? "" : "hidden"}`}>
+        <MoneyTab matches={matches} scores={scores} players={players} totals={totals} />
+      </section>
 
       <section className={`mb-6 grid gap-3 ${tab === "matches" ? "" : "hidden"}`}>
         {matches.map((m) => (
@@ -629,7 +635,7 @@ function MatchCard({
     if (!pressChoice) return
     const scope = pressChoice === "overall" ? "overall" : currentNine
     if (!scope) return
-    const amount = Math.max(0, Number(pressAmount) || 0)
+    const amount = Math.round(Math.max(0, Number(pressAmount) || 0))
     onPress(match, scope, amount)
     closePress()
   }
@@ -745,8 +751,8 @@ function BetEditor({
   const [, start] = useTransition()
 
   function commit() {
-    const n = Math.max(0, Number(nineBet) || 0)
-    const o = Math.max(0, Number(overallBet) || 0)
+    const n = Math.round(Math.max(0, Number(nineBet) || 0))
+    const o = Math.round(Math.max(0, Number(overallBet) || 0))
     setNineBet(String(n))
     setOverallBet(String(o))
     if (n === match.nineBet && o === match.overallBet) return
@@ -836,6 +842,139 @@ function PressCard({
       </div>
       <StatusRow label={`${scopeLabel} · from hole ${press.startHole + 1}`} value={label} />
     </Card>
+  )
+}
+
+function MoneyTab({
+  matches,
+  scores,
+  players,
+  totals,
+}: {
+  matches: Match[]
+  scores: Scores
+  players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
+  totals: Record<number, number>
+}) {
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]))
+  const sortedPlayers = [...players].sort((a, b) => (totals[b.id] ?? 0) - (totals[a.id] ?? 0))
+  const settlement = computeSettlement(totals, players)
+
+  return (
+    <div className="grid gap-4">
+      <Card className="p-4 sm:p-5">
+        <h2 className="mb-3 font-display text-lg tracking-tight">Balances</h2>
+        <div className="grid gap-2">
+          {sortedPlayers.map((p) => (
+            <div key={p.id} className="flex items-center justify-between rounded-2xl bg-[var(--color-surface-2)] px-4 py-2.5">
+              <div className="flex items-center gap-2 font-medium">
+                <PlayerAvatar player={p} size="sm" />
+                <span>{shortLabel(p)}</span>
+              </div>
+              <span className={`font-display text-lg tabular ${moneyClass(totals[p.id] ?? 0)}`}>
+                {formatMoney(totals[p.id] ?? 0)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-4 sm:p-5">
+        <h2 className="mb-3 flex items-center gap-2 font-display text-lg tracking-tight">
+          <HandCoins className="h-5 w-5 text-[var(--color-gold)]" /> Settle Up
+        </h2>
+        {settlement.length === 0 ? (
+          <p className="text-sm text-[var(--color-muted)]">All square — no money owed.</p>
+        ) : (
+          <div className="grid gap-2">
+            {settlement.map((t, i) => (
+              <div key={i} className="flex items-center justify-between rounded-2xl bg-[var(--color-surface-2)] px-4 py-2.5">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <span>{shortLabel(byId[t.from])}</span>
+                  <ArrowRight className="h-4 w-4 text-[var(--color-muted)]" />
+                  <span>{shortLabel(byId[t.to])}</span>
+                </div>
+                <span className="font-display text-lg tabular text-[var(--color-primary)]">${t.amount}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4 sm:p-5">
+        <h2 className="mb-3 font-display text-lg tracking-tight">Match Breakdown</h2>
+        <div className="grid gap-3">
+          {matches.map((m) => {
+            const teamAName = m.teamA.map((id) => shortLabel(byId[id])).join(" & ")
+            const teamBName = m.teamB.map((id) => shortLabel(byId[id])).join(" & ")
+            const { results } = computeMatchMoney(m, scores, players)
+            const segments: { label: string; winner: "A" | "B" | "halved" | null; amount: number }[] = [
+              { label: "Front", winner: results.front, amount: m.nineBet },
+              { label: "Back", winner: results.back, amount: m.nineBet },
+              { label: "Overall", winner: results.overall, amount: m.overallBet },
+            ]
+            return (
+              <div key={m.id} className="rounded-2xl border border-[var(--color-border)] p-3.5">
+                <p className="mb-2.5 text-sm font-semibold">
+                  {teamAName} <span className="text-[var(--color-muted)]">vs</span> {teamBName}
+                </p>
+                <div className="grid gap-1.5">
+                  {segments.map((s) => (
+                    <MoneySegmentRow
+                      key={s.label}
+                      label={s.label}
+                      winner={s.winner}
+                      amount={s.amount}
+                      winnerName={s.winner === "A" ? teamAName : s.winner === "B" ? teamBName : null}
+                    />
+                  ))}
+                  {m.presses.map((p) => {
+                    const scopeLabel = p.scope === "overall" ? "Overall" : p.scope === "front" ? "Front" : "Back"
+                    const winner = results.pressResults[p.id]
+                    const amount = p.amount ?? (p.scope === "overall" ? m.overallBet : m.nineBet)
+                    return (
+                      <MoneySegmentRow
+                        key={p.id}
+                        label={`Press · ${scopeLabel} · hole ${p.startHole + 1}`}
+                        winner={winner}
+                        amount={amount}
+                        winnerName={winner === "A" ? teamAName : winner === "B" ? teamBName : null}
+                        indent
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function MoneySegmentRow({
+  label,
+  winner,
+  amount,
+  winnerName,
+  indent = false,
+}: {
+  label: string
+  winner: "A" | "B" | "halved" | null
+  amount: number
+  winnerName: string | null
+  indent?: boolean
+}) {
+  const outcome = winner === null ? "Not settled" : winner === "halved" ? "Halved" : `${winnerName} won`
+  return (
+    <div className={`flex items-center justify-between text-sm ${indent ? "ml-3 text-[var(--color-muted)]" : ""}`}>
+      <span className={indent ? "" : "font-medium"}>{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-[var(--color-muted)]">{outcome}</span>
+        {winner && winner !== "halved" ? <span className="font-semibold tabular text-[var(--color-primary)]">${amount}</span> : null}
+      </div>
+    </div>
   )
 }
 
