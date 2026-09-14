@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2 } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
 import { saveScoreOffline, addPressOffline, completeRoundOffline } from "@/lib/offline-actions"
+import { cachePage } from "@/lib/offline-store"
 import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
   computeMatchMoney,
@@ -67,6 +68,12 @@ export function RoundScorecard({
   useEffect(() => {
     setScores((prev) => mergeScores(round.scores, prev, dirtyRef.current))
     setMatches(round.matches)
+  }, [round])
+
+  // Keep a local copy of the round so an offline direct visit to this page (or the shared public
+  // link) can still render the last known scores instead of an empty shell.
+  useEffect(() => {
+    void cachePage(`round:${round.id}`, round)
   }, [round])
 
   // Everyone viewing an active round gets a periodic re-sync so scores/presses/money stay current

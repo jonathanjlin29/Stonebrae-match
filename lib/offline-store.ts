@@ -66,16 +66,52 @@ export async function getQueuedMutations(): Promise<OfflineMutation[]> {
   })
 }
 
+// Recursively swaps any negative temporary id (or an object key that looks like one) for the
+// real server id once it's known, so a dependent mutation (e.g. saveScore for a round created
+// offline) targets the record the server actually created instead of the local placeholder.
+async function resolvePayloadIds(value: unknown): Promise<unknown> {
+  if (typeof value === "number" && value < 0) {
+    const resolved = await resolveId(String(value))
+    return resolved ?? value
+  }
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((item) => resolvePayloadIds(item)))
+  }
+  if (value && typeof value === "object") {
+    const entries = await Promise.all(
+      Object.entries(value as Record<string, unknown>).map(async ([key, val]) => {
+        let nextKey = key
+        if (/^-\d+$/.test(key)) {
+          const resolved = await resolveId(key)
+          if (resolved != null) nextKey = String(resolved)
+        }
+        return [nextKey, await resolvePayloadIds(val)] as const
+      }),
+    )
+    return Object.fromEntries(entries)
+  }
+  return value
+}
+
 export async function replayQueuedMutations() {
   if (typeof window === "undefined" || !navigator.onLine) return
   const queued = await getQueuedMutations()
   for (const mutation of queued) {
+    const payload = await resolvePayloadIds(mutation.payload)
     const response = await fetch("/api/offline-sync", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: mutation.action, payload: mutation.payload, idempotencyKey: mutation.id }),
+      body: JSON.stringify({ action: mutation.action, payload, idempotencyKey: mutation.id }),
     })
     if (!response.ok) break
+    const data = await response.json().catch(() => null)
+    const result = data?.result
+    if (mutation.action === "createPlayer" && result?.ok && result.player?.id != null) {
+      await saveIdMapping(mutation.id, result.player.id)
+    }
+    if (mutation.action === "createRound" && result?.ok && result.roundId != null) {
+      await saveIdMapping(mutation.id, result.roundId)
+    }
     await removeQueuedMutation(mutation.id)
   }
 }
@@ -108,4 +144,26 @@ export async function readCachedPage<T>(key: string): Promise<T | undefined> {
     request.onsuccess = () => resolve(request.result as T | undefined)
     request.onerror = () => reject(request.error)
   })
+}
+
+// A single flag naming the round created while offline that should take over the home screen
+// until it's synced — lets a cached "/" shell resume the right view after a refresh.
+const ACTIVE_ROUND_KEY = "stonebrae-active-offline-round"
+
+export function setActiveOfflineRound(tempId: number) {
+  if (typeof window === "undefined") return
+  window.localStorage.setItem(ACTIVE_ROUND_KEY, String(tempId))
+  window.dispatchEvent(new Event("offline-round-updated"))
+}
+
+export function getActiveOfflineRound(): number | null {
+  if (typeof window === "undefined") return null
+  const raw = window.localStorage.getItem(ACTIVE_ROUND_KEY)
+  return raw ? Number(raw) : null
+}
+
+export function clearActiveOfflineRound() {
+  if (typeof window === "undefined") return
+  window.localStorage.removeItem(ACTIVE_ROUND_KEY)
+  window.dispatchEvent(new Event("offline-round-updated"))
 }
