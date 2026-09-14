@@ -596,7 +596,10 @@ function MatchCard({
   const backLabel = back.length ? getMatchStatusLabel(back[back.length - 1].statusA) : "Not started"
   const overallLabel = overall.length ? getMatchStatusLabel(overall[overall.length - 1].statusA) : "Not started"
   const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
-  const overallStatus = overall.length ? overall[overall.length - 1].statusA * (currentTeam === "B" ? -1 : 1) : 0
+  const teamSign = currentTeam === "B" ? -1 : 1
+  const frontStatus = front.length ? front[front.length - 1].statusA * teamSign : 0
+  const backStatus = back.length ? back[back.length - 1].statusA * teamSign : 0
+  const overallStatus = overall.length ? overall[overall.length - 1].statusA * teamSign : 0
   const statusTone = overallStatus < 0
     ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
     : overallStatus > 0
@@ -657,9 +660,9 @@ function MatchCard({
         )}
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
-        <StatusRow label="Front" value={frontLabel} />
-        <StatusRow label="Back" value={backLabel} />
-        <StatusRow label="Overall" value={overallLabel} />
+        <StatusRow label="Front" value={frontLabel} status={frontStatus} />
+        <StatusRow label="Back" value={backLabel} status={backStatus} />
+        <StatusRow label="Overall" value={overallLabel} status={overallStatus} />
       </div>
       {match.presses.length > 0 && (
         <div className="mt-3 grid gap-2">
@@ -961,9 +964,15 @@ function MoneySegmentRow({
   )
 }
 
-function StatusRow({ label, value }: { label: string; value: string }) {
+function StatusRow({ label, value, status = 0 }: { label: string; value: string; status?: number }) {
+  const tone =
+    status < 0
+      ? "bg-[var(--color-danger)]/10"
+      : status > 0
+        ? "bg-[var(--color-primary)]/10"
+        : "bg-[var(--color-surface-2)]"
   return (
-    <div className="flex items-center justify-between rounded-2xl bg-[var(--color-surface-2)] px-4 py-2.5">
+    <div className={`flex items-center justify-between rounded-2xl px-4 py-2.5 transition-colors ${tone}`}>
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
         <p className="font-display text-lg tracking-tight">{value}</p>
