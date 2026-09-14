@@ -115,7 +115,8 @@ export function computeMatchMoney(match: Match, scores: Scores, players: Player[
     const end = press.scope === "front" ? 8 : 17
     const w = segmentWinner(match, scores, players, press.startHole, end)
     pressResults[press.id] = w
-    applySegment(w, match.nineBet)
+    const defaultAmount = press.scope === "overall" ? match.overallBet : match.nineBet
+    applySegment(w, press.amount ?? defaultAmount)
   }
 
   return { money, results: { front, back, overall, pressResults } }

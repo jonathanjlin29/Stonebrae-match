@@ -6,7 +6,8 @@ const handlers = {
   createPlayer: (payload: any) => createPlayer(payload),
   createRound: (payload: any) => createRound(payload),
   saveScore: (payload: any) => saveScore(payload.roundId, payload.playerId, payload.hole, payload.strokes),
-  addPress: (payload: any) => addPress(payload.roundId, payload.matchId, payload.scope, payload.startHole, payload.initiatedBy),
+  addPress: (payload: any) =>
+    addPress(payload.roundId, payload.matchId, payload.scope, payload.startHole, payload.initiatedBy, payload.amount),
   completeRound: (payload: any) => completeRound(payload.roundId),
 } as const
 

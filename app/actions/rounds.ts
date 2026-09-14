@@ -120,7 +120,14 @@ export async function saveScore(roundId: number, playerId: number, hole: number,
   return { ok: true }
 }
 
-export async function addPress(roundId: number, matchId: number, scope: "front" | "back", startHole: number, initiatedBy: "A" | "B") {
+export async function addPress(
+  roundId: number,
+  matchId: number,
+  scope: "front" | "back" | "overall",
+  startHole: number,
+  initiatedBy: "A" | "B",
+  amount: number,
+) {
   const rows = await sql`SELECT presses FROM matches WHERE id = ${matchId}`
   const presses = (rows[0]?.presses ?? []) as any[]
   presses.push({
@@ -129,6 +136,7 @@ export async function addPress(roundId: number, matchId: number, scope: "front" 
     scope,
     startHole,
     initiatedBy,
+    amount: Math.max(0, Math.round(amount)),
   })
   await sql`UPDATE matches SET presses = ${JSON.stringify(presses)} WHERE id = ${matchId}`
   await recomputeRoundMoney(roundId)

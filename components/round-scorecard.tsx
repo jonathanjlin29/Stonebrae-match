@@ -43,7 +43,7 @@ export function RoundScorecard({
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [completing, setCompleting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const [tab, setTab] = useState<Tab>("matches")
+  const [tab, setTab] = useState<Tab>("scorecard")
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -155,21 +155,24 @@ export function RoundScorecard({
     })
   }
 
-  function pressScope(match: Match, scope: "front" | "back") {
-    const [start_, end] = scope === "front" ? [0, 8] : [9, 17]
+  function pressScope(match: Match, scope: "front" | "back" | "overall", amount: number) {
+    const [start_, end] = scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
     const status = computeMatchStatus(match, scores, players, start_, end)
-    if (status.length === 0 || status.length === 9) return
+    if (status.length === 0 || status.length === end - start_ + 1) return
     const last = status[status.length - 1]
     if (last.statusA === 0) return
     const initiatedBy = last.statusA > 0 ? "B" : "A"
     const startHole = start_ + status.length
     start(async () => {
-      const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy)
+      const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy, amount)
       if (res.ok) {
         setMatches((prev) =>
           prev.map((m) =>
             m.id === match.id
-              ? { ...m, presses: [...m.presses, { id: `local-${Date.now()}`, matchId: match.id, scope, startHole, initiatedBy }] }
+              ? {
+                  ...m,
+                  presses: [...m.presses, { id: `local-${Date.now()}`, matchId: match.id, scope, startHole, initiatedBy, amount }],
+                }
               : m,
           ),
         )
@@ -269,8 +272,8 @@ export function RoundScorecard({
           value={tab}
           onChange={setTab}
           options={[
-            { value: "matches", label: "Matches" },
             { value: "scorecard", label: "Scorecard" },
+            { value: "matches", label: "Matches" },
           ]}
         />
       </div>
@@ -566,9 +569,13 @@ function MatchCard({
   isActive: boolean
   isAdmin: boolean
   currentPlayerId: number | null
-  onPress: (match: Match, scope: "front" | "back") => void
+  onPress: (match: Match, scope: "front" | "back" | "overall", amount: number) => void
   onBetsChanged: (matchId: number, nineBet: number, overallBet: number) => void
 }) {
+  const [pressOpen, setPressOpen] = useState(false)
+  const [pressChoice, setPressChoice] = useState<"nine" | "overall" | null>(null)
+  const [pressAmount, setPressAmount] = useState("")
+
   const byId = Object.fromEntries(players.map((p) => [p.id, p]))
   const teamAName = match.teamA.map((id) => shortLabel(byId[id])).join(" & ")
   const teamBName = match.teamB.map((id) => shortLabel(byId[id])).join(" & ")
@@ -592,6 +599,29 @@ function MatchCard({
 
   const canPressFront = isActive && front.length > 0 && front.length < 9 && front[front.length - 1].statusA !== 0
   const canPressBack = isActive && back.length > 0 && back.length < 9 && back[back.length - 1].statusA !== 0
+  const canPressOverall = isActive && overall.length > 0 && overall.length < 18 && overall[overall.length - 1].statusA !== 0
+  const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
+  const canPressAny = currentNine != null || canPressOverall
+
+  function openPress(choice: "nine" | "overall") {
+    setPressChoice(choice)
+    setPressAmount(String(choice === "overall" ? match.overallBet : match.nineBet))
+  }
+
+  function closePress() {
+    setPressOpen(false)
+    setPressChoice(null)
+    setPressAmount("")
+  }
+
+  function confirmPress() {
+    if (!pressChoice) return
+    const scope = pressChoice === "overall" ? "overall" : currentNine
+    if (!scope) return
+    const amount = Math.max(0, Number(pressAmount) || 0)
+    onPress(match, scope, amount)
+    closePress()
+  }
 
   return (
     <Card className={`p-4 sm:p-5 transition-colors ${statusTone}`}>
@@ -621,17 +651,82 @@ function MatchCard({
         )}
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
-        <StatusRow label="Front" value={frontLabel} canPress={canPressFront} onPress={() => onPress(match, "front")} />
-        <StatusRow label="Back" value={backLabel} canPress={canPressBack} onPress={() => onPress(match, "back")} />
-        <StatusRow label="Overall" value={overallLabel} canPress={false} onPress={() => {}} />
+        <StatusRow label="Front" value={frontLabel} />
+        <StatusRow label="Back" value={backLabel} />
+        <StatusRow label="Overall" value={overallLabel} />
       </div>
       {match.presses.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {match.presses.map((p) => (
             <Badge key={p.id} className="gap-1 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
-              <Swords className="h-3 w-3" /> Press · hole {p.startHole + 1}
+              <Swords className="h-3 w-3" />
+              {p.scope === "overall" ? "Overall press" : `${p.scope === "front" ? "Front" : "Back"} press`} · hole {p.startHole + 1}
+              {p.amount != null ? ` · $${p.amount}` : ""}
             </Badge>
           ))}
+        </div>
+      )}
+      {canPressAny && (
+        <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+          {!pressOpen ? (
+            <button
+              onClick={() => setPressOpen(true)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-full bg-[var(--color-gold)] px-4 py-2.5 text-sm font-bold text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-[0.98] hover:brightness-105"
+            >
+              <Swords className="h-4 w-4" /> Press
+            </button>
+          ) : !pressChoice ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {currentNine && (
+                <button
+                  onClick={() => openPress("nine")}
+                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
+                >
+                  Press {currentNine === "front" ? "Front" : "Back"} Nine
+                </button>
+              )}
+              {canPressOverall && (
+                <button
+                  onClick={() => openPress("overall")}
+                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
+                >
+                  Press Overall
+                </button>
+              )}
+              <button
+                onClick={closePress}
+                className="rounded-full px-4 py-2.5 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold">
+                Press {pressChoice === "overall" ? "Overall" : `${currentNine === "front" ? "Front" : "Back"} Nine`} for
+              </span>
+              <span className="text-[var(--color-muted)]">$</span>
+              <input
+                type="number"
+                autoFocus
+                value={pressAmount}
+                onChange={(e) => setPressAmount(e.target.value)}
+                className="h-9 w-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+              />
+              <button
+                onClick={confirmPress}
+                className="rounded-full bg-[var(--color-gold)] px-4 py-2 text-sm font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={closePress}
+                className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -687,31 +782,13 @@ function BetEditor({
   )
 }
 
-function StatusRow({
-  label,
-  value,
-  canPress,
-  onPress,
-}: {
-  label: string
-  value: string
-  canPress: boolean
-  onPress: () => void
-}) {
+function StatusRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between rounded-2xl bg-[var(--color-surface-2)] px-4 py-2.5">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
         <p className="font-display text-lg tracking-tight">{value}</p>
       </div>
-      {canPress && (
-        <button
-          onClick={onPress}
-          className="rounded-full bg-[var(--color-gold)] px-3 py-1.5 text-xs font-bold text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-95 hover:brightness-105"
-        >
-          Press
-        </button>
-      )}
     </div>
   )
 }

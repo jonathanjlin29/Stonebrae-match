@@ -104,13 +104,20 @@ export async function saveScoreOffline(roundId: number, playerId: number, hole: 
   return { ok: true, queued: true }
 }
 
-export async function addPressOffline(roundId: number, matchId: number, scope: "front" | "back", startHole: number, initiatedBy: "A" | "B") {
+export async function addPressOffline(
+  roundId: number,
+  matchId: number,
+  scope: "front" | "back" | "overall",
+  startHole: number,
+  initiatedBy: "A" | "B",
+  amount: number,
+) {
   const resolvedRoundId = await resolveMaybeTempId(roundId)
   const resolvedMatchId = await resolveMaybeTempId(matchId)
   if (resolvedRoundId >= 0 && resolvedMatchId >= 0 && navigator.onLine) {
-    return addPress(resolvedRoundId, resolvedMatchId, scope, startHole, initiatedBy)
+    return addPress(resolvedRoundId, resolvedMatchId, scope, startHole, initiatedBy, amount)
   }
-  await enqueueMutation("addPress", { roundId: resolvedRoundId, matchId: resolvedMatchId, scope, startHole, initiatedBy })
+  await enqueueMutation("addPress", { roundId: resolvedRoundId, matchId: resolvedMatchId, scope, startHole, initiatedBy, amount })
   return { ok: true, queued: true }
 }
 
