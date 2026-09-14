@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import { Outfit, Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
+import { OfflineProvider } from "@/components/offline-provider"
 import "./globals.css"
 
 const display = Outfit({
@@ -43,6 +44,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
           {children}
+          <OfflineProvider />
         </ThemeProvider>
       </body>
     </html>
