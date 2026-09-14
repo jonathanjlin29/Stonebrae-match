@@ -10,6 +10,7 @@ import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
   computeMatchMoney,
   computeMatchStatus,
+  computeSegmentStatus,
   getMatchStatusLabel,
   isBounceBack,
   birdieStreakEndingAt,
@@ -158,12 +159,11 @@ export function RoundScorecard({
 
   function pressScope(match: Match, scope: "front" | "back" | "overall", amount: number) {
     const [start_, end] = scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
-    const status = computeMatchStatus(match, scores, players, start_, end)
-    if (status.length === 0 || status.length === end - start_ + 1) return
-    const last = status[status.length - 1]
-    if (last.statusA === 0) return
-    const initiatedBy = last.statusA > 0 ? "B" : "A"
-    const startHole = start_ + status.length
+    const status = computeSegmentStatus(match, scores, players, start_, end)
+    if (status.holes.length === 0 || status.frozen || status.holes.length === end - start_ + 1) return
+    if (status.finalStatusA === 0) return
+    const initiatedBy = status.finalStatusA > 0 ? "B" : "A"
+    const startHole = start_ + status.holes.length
     start(async () => {
       const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy, amount)
       if (res.ok) {
@@ -588,27 +588,32 @@ function MatchCard({
   const teamAPlayers = match.teamA.map((id) => byId[id]).filter(Boolean)
   const teamBPlayers = match.teamB.map((id) => byId[id]).filter(Boolean)
 
-  const front = computeMatchStatus(match, scores, players, 0, 8)
-  const back = computeMatchStatus(match, scores, players, 9, 17)
-  const overall = computeMatchStatus(match, scores, players, 0, 17)
+  const front = computeSegmentStatus(match, scores, players, 0, 8)
+  const back = computeSegmentStatus(match, scores, players, 9, 17)
+  const overall = computeSegmentStatus(match, scores, players, 0, 17)
 
-  const frontLabel = front.length ? getMatchStatusLabel(front[front.length - 1].statusA) : "Not started"
-  const backLabel = back.length ? getMatchStatusLabel(back[back.length - 1].statusA) : "Not started"
-  const overallLabel = overall.length ? getMatchStatusLabel(overall[overall.length - 1].statusA) : "Not started"
+  const frontLabel = front.holes.length ? (front.frozen ? front.closeoutLabel! : getMatchStatusLabel(front.finalStatusA)) : "Not started"
+  const backLabel = back.holes.length ? (back.frozen ? back.closeoutLabel! : getMatchStatusLabel(back.finalStatusA)) : "Not started"
+  const overallLabel = overall.holes.length
+    ? overall.frozen
+      ? overall.closeoutLabel!
+      : getMatchStatusLabel(overall.finalStatusA)
+    : "Not started"
   const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
   const teamSign = currentTeam === "B" ? -1 : 1
-  const frontStatus = front.length ? front[front.length - 1].statusA * teamSign : 0
-  const backStatus = back.length ? back[back.length - 1].statusA * teamSign : 0
-  const overallStatus = overall.length ? overall[overall.length - 1].statusA * teamSign : 0
+  const frontStatus = front.holes.length ? front.finalStatusA * teamSign : 0
+  const backStatus = back.holes.length ? back.finalStatusA * teamSign : 0
+  const overallStatus = overall.holes.length ? overall.finalStatusA * teamSign : 0
   const statusTone = overallStatus < 0
     ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
     : overallStatus > 0
       ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
       : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const canPressFront = isActive && front.length > 0 && front.length < 9 && front[front.length - 1].statusA !== 0
-  const canPressBack = isActive && back.length > 0 && back.length < 9 && back[back.length - 1].statusA !== 0
-  const canPressOverall = isActive && overall.length > 0 && overall.length < 18 && overall[overall.length - 1].statusA !== 0
+  const canPressFront = isActive && front.holes.length > 0 && front.holes.length < 9 && !front.frozen && front.finalStatusA !== 0
+  const canPressBack = isActive && back.holes.length > 0 && back.holes.length < 9 && !back.frozen && back.finalStatusA !== 0
+  const canPressOverall =
+    isActive && overall.holes.length > 0 && overall.holes.length < 18 && !overall.frozen && overall.finalStatusA !== 0
   const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
   const canPressAny = currentNine != null || canPressOverall
 
@@ -660,10 +665,11 @@ function MatchCard({
         )}
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
-        <StatusRow label="Front" value={frontLabel} status={frontStatus} />
-        <StatusRow label="Back" value={backLabel} status={backStatus} />
-        <StatusRow label="Overall" value={overallLabel} status={overallStatus} />
+        <StatusRow label="Front" value={frontLabel} status={frontStatus} frozen={front.frozen} />
+        <StatusRow label="Back" value={backLabel} status={backStatus} frozen={back.frozen} />
+        <StatusRow label="Overall" value={overallLabel} status={overallStatus} frozen={overall.frozen} />
       </div>
+      <HoleTimeline holes={overall.holes} teamSign={teamSign} className="mt-3" />
       {match.presses.length > 0 && (
         <div className="mt-3 grid gap-2">
           {match.presses.map((p) => (
@@ -805,10 +811,15 @@ function PressRow({
   currentPlayerId: number | null
 }) {
   const end = press.scope === "front" ? 8 : 17
-  const status = computeMatchStatus(match, scores, players, press.startHole, end)
-  const label = status.length ? getMatchStatusLabel(status[status.length - 1].statusA) : "Not started"
+  const status = computeSegmentStatus(match, scores, players, press.startHole, end)
+  const label = status.holes.length
+    ? status.frozen
+      ? status.closeoutLabel!
+      : getMatchStatusLabel(status.finalStatusA)
+    : "Not started"
   const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
-  const statusVal = status.length ? status[status.length - 1].statusA * (currentTeam === "B" ? -1 : 1) : 0
+  const teamSign = currentTeam === "B" ? -1 : 1
+  const statusVal = status.holes.length ? status.finalStatusA * teamSign : 0
   const statusTone =
     statusVal < 0
       ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
@@ -826,7 +837,8 @@ function PressRow({
         <span className="text-[var(--color-muted)]">{scopeLabel} · from hole {press.startHole + 1}</span>
         <Badge className="ml-auto tabular">${press.amount}</Badge>
       </div>
-      <StatusRow label={scopeLabel} value={label} />
+      <StatusRow label={scopeLabel} value={label} status={statusVal} frozen={status.frozen} />
+      <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-2" />
     </div>
   )
 }
@@ -964,7 +976,17 @@ function MoneySegmentRow({
   )
 }
 
-function StatusRow({ label, value, status = 0 }: { label: string; value: string; status?: number }) {
+function StatusRow({
+  label,
+  value,
+  status = 0,
+  frozen = false,
+}: {
+  label: string
+  value: string
+  status?: number
+  frozen?: boolean
+}) {
   const tone =
     status < 0
       ? "bg-[var(--color-danger)]/10"
@@ -977,6 +999,49 @@ function StatusRow({ label, value, status = 0 }: { label: string; value: string;
         <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
         <p className="font-display text-lg tracking-tight">{value}</p>
       </div>
+      {frozen ? (
+        <Badge className="gap-1 bg-[var(--color-gold)]/15 text-[var(--color-gold)]" title="Match is mathematically decided">
+          <Lock className="h-3 w-3" /> Frozen
+        </Badge>
+      ) : null}
+    </div>
+  )
+}
+
+// Hole-by-hole timeline: one colored box per hole played (from the viewer's perspective) —
+// green for a hole won, blue for a halved hole, red for a hole lost. Stops at the freeze point
+// since `holes` is already truncated there.
+function HoleTimeline({
+  holes,
+  teamSign,
+  className = "",
+}: {
+  holes: { hole: number; holeWinner: "A" | "B" | "halved" }[]
+  teamSign: number
+  className?: string
+}) {
+  if (holes.length === 0) return null
+  return (
+    <div className={`flex flex-wrap gap-1.5 ${className}`}>
+      {holes.map(({ hole, holeWinner }) => {
+        const outcome =
+          holeWinner === "halved" ? "push" : (holeWinner === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
+        const tone =
+          outcome === "won"
+            ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
+            : outcome === "push"
+              ? "bg-[var(--color-match-square)]/25 text-[var(--color-match-square)]"
+              : "bg-[var(--color-danger)]/20 text-[var(--color-danger)]"
+        return (
+          <span
+            key={hole}
+            title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
+            className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold tabular ${tone}`}
+          >
+            {hole + 1}
+          </span>
+        )
+      })}
     </div>
   )
 }

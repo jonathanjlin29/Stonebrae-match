@@ -75,12 +75,56 @@ export function getMatchStatusLabel(statusA: number): string {
   return `${Math.abs(statusA)} DN`
 }
 
+export type SegmentStatus = {
+  // Hole-by-hole results within the segment, truncated at the freeze point (if any) so holes
+  // played after a mathematically decided outcome are not counted.
+  holes: { hole: number; holeWinner: "A" | "B" | "halved"; statusA: number }[]
+  finalStatusA: number
+  frozen: boolean
+  frozenAtHole: number | null // 0-indexed hole that clinched the segment
+  // Standard match-play closeout notation, e.g. "5&4" for 5 up with 4 to play.
+  closeoutLabel: string | null
+}
+
+// Computes a segment's (front/back/overall/press) hole-by-hole status, then detects dormie/
+// closeout: once a side's lead exceeds the holes remaining in the segment, the outcome can no
+// longer change, so the segment "freezes" — later holes are ignored for this segment even if
+// they get entered (other segments keep counting independently).
+export function computeSegmentStatus(
+  match: Match,
+  scores: Scores,
+  players: Player[],
+  start: number,
+  end: number,
+): SegmentStatus {
+  const raw = computeMatchStatus(match, scores, players, start, end)
+  const totalHoles = end - start + 1
+  const holes: SegmentStatus["holes"] = []
+  let frozen = false
+  let frozenAtHole: number | null = null
+  let closeoutLabel: string | null = null
+
+  for (const r of raw) {
+    holes.push(r)
+    const holesPlayed = r.hole - start + 1
+    const holesRemaining = totalHoles - holesPlayed
+    if (holesRemaining > 0 && Math.abs(r.statusA) > holesRemaining) {
+      frozen = true
+      frozenAtHole = r.hole
+      closeoutLabel = `${Math.abs(r.statusA)}&${holesRemaining}`
+      break
+    }
+  }
+
+  const finalStatusA = holes.length > 0 ? holes[holes.length - 1].statusA : 0
+  return { holes, finalStatusA, frozen, frozenAtHole, closeoutLabel }
+}
+
 function segmentWinner(match: Match, scores: Scores, players: Player[], start: number, end: number): "A" | "B" | "halved" | null {
-  const results = computeMatchStatus(match, scores, players, start, end)
-  if (results.length === 0) return null
-  const finalStatus = results[results.length - 1].statusA
-  if (finalStatus > 0) return "A"
-  if (finalStatus < 0) return "B"
+  const status = computeSegmentStatus(match, scores, players, start, end)
+  if (status.holes.length === 0) return null
+  if (status.finalStatusA > 0) return "A"
+  if (status.finalStatusA < 0) return "B"
   return "halved"
 }
 
