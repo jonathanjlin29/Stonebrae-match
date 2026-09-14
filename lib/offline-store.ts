@@ -2,6 +2,7 @@ const DB_NAME = "stonebrae-offline"
 const DB_VERSION = 1
 const QUEUE = "mutation-queue"
 const CACHE = "page-cache"
+const ID_MAP = "id-map"
 
 export type OfflineMutation = {
   id: string
@@ -18,16 +19,35 @@ function openDb(): Promise<IDBDatabase> {
       const db = request.result
       if (!db.objectStoreNames.contains(QUEUE)) db.createObjectStore(QUEUE, { keyPath: "id" })
       if (!db.objectStoreNames.contains(CACHE)) db.createObjectStore(CACHE)
+      if (!db.objectStoreNames.contains(ID_MAP)) db.createObjectStore(ID_MAP)
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
   })
 }
 
-export async function enqueueMutation(action: string, payload: unknown) {
+export async function saveIdMapping(tempId: string, serverId: number) {
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const request = db.transaction(ID_MAP, "readwrite").objectStore(ID_MAP).put(serverId, tempId)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+}
+
+export async function resolveId(tempId: string): Promise<number | undefined> {
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(ID_MAP).objectStore(ID_MAP).get(tempId)
+    request.onsuccess = () => resolve(request.result as number | undefined)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+export async function enqueueMutation(action: string, payload: unknown, optimisticId?: string) {
   if (typeof window === "undefined") return
   const db = await openDb()
-  const mutation: OfflineMutation = { id: crypto.randomUUID(), action, payload, createdAt: Date.now(), attempts: 0 }
+  const mutation: OfflineMutation = { id: optimisticId ?? crypto.randomUUID(), action, payload, createdAt: Date.now(), attempts: 0 }
   await new Promise<void>((resolve, reject) => {
     const request = db.transaction(QUEUE, "readwrite").objectStore(QUEUE).add(mutation)
     request.onsuccess = () => resolve()
