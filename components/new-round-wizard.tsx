@@ -3,8 +3,7 @@
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
 import { Check, Plus, Minus, Users, User, ArrowRight, ArrowLeft, X } from "lucide-react"
-import { createPlayer } from "@/app/actions/players"
-import { createRound } from "@/app/actions/rounds"
+import { createPlayerOffline, createRoundOffline } from "@/lib/offline-actions"
 import type { Player } from "@/lib/types"
 import { playerLabel, shortLabel } from "@/lib/util"
 import { Button, Card, PlayerAvatar, SegmentedControl } from "./ui"
@@ -52,7 +51,7 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
     e.preventDefault()
     setAddErr(null)
     start(async () => {
-      const res = await createPlayer({ name: newName, lastName: newLast || undefined, nickname: newUsername, photo: newPhoto, handicap: 0 })
+      const res = await createPlayerOffline({ name: newName, lastName: newLast || undefined, nickname: newUsername, photo: newPhoto, handicap: 0 })
       if (!res.ok) {
         setAddErr(res.error)
         return
@@ -122,9 +121,22 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
       }
     }
     start(async () => {
-      const res = await createRound({ playerIds: selected, handicaps, matches })
+      const res = await createRoundOffline({
+        playerIds: selected,
+        handicaps,
+        matches,
+        roster,
+        currentPlayerId: currentPlayer.id,
+      })
       if (!res.ok) {
         setError(res.error)
+        return
+      }
+      if (res.roundId < 0) {
+        // Created offline: no server route exists yet, so head home where the offline round
+        // takes over the screen until it finishes syncing.
+        router.push("/")
+        router.refresh()
         return
       }
       router.push(`/round/${res.roundId}`)

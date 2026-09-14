@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { PlayerGate } from "@/components/player-gate"
 import { Dashboard } from "@/components/dashboard"
 import { SiteHeader } from "@/components/site-header"
+import { HomeClientGate } from "@/components/home-client-gate"
 
 export const dynamic = "force-dynamic"
 
@@ -28,7 +29,9 @@ export default async function HomePage() {
   return (
     <main className="min-h-dvh">
       <SiteHeader player={player} />
-      <Dashboard player={player} activeRounds={activeRounds} recentRounds={recentRounds} />
+      <HomeClientGate currentPlayerId={player.id}>
+        <Dashboard player={player} activeRounds={activeRounds} recentRounds={recentRounds} />
+      </HomeClientGate>
     </main>
   )
 }

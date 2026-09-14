@@ -3,7 +3,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2 } from "lucide-react"
-import { saveScore, addPress, completeRound, deleteRound } from "@/app/actions/rounds"
+import { deleteRound } from "@/app/actions/rounds"
+import { saveScoreOffline, addPressOffline, completeRoundOffline } from "@/lib/offline-actions"
+import { cachePage } from "@/lib/offline-store"
 import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
   computeMatchMoney,
@@ -66,6 +68,12 @@ export function RoundScorecard({
   useEffect(() => {
     setScores((prev) => mergeScores(round.scores, prev, dirtyRef.current))
     setMatches(round.matches)
+  }, [round])
+
+  // Keep a local copy of the round so an offline direct visit to this page (or the shared public
+  // link) can still render the last known scores instead of an empty shell.
+  useEffect(() => {
+    void cachePage(`round:${round.id}`, round)
   }, [round])
 
   // Everyone viewing an active round gets a periodic re-sync so scores/presses/money stay current
@@ -142,7 +150,7 @@ export function RoundScorecard({
     const key = `${playerId}:${hole}`
     const value = scores[playerId]?.[hole] ?? null
     start(async () => {
-      await saveScore(round.id, playerId, hole, value)
+      await saveScoreOffline(round.id, playerId, hole, value)
       dirtyRef.current.delete(key)
     })
   }
@@ -156,7 +164,7 @@ export function RoundScorecard({
     const initiatedBy = last.statusA > 0 ? "B" : "A"
     const startHole = start_ + status.length
     start(async () => {
-      const res = await addPress(round.id, match.id, scope, startHole, initiatedBy)
+      const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy)
       if (res.ok) {
         setMatches((prev) =>
           prev.map((m) =>
@@ -172,7 +180,7 @@ export function RoundScorecard({
   function finish() {
     setCompleting(true)
     start(async () => {
-      await completeRound(round.id)
+      await completeRoundOffline(round.id)
       router.push("/")
       router.refresh()
     })
@@ -275,8 +283,9 @@ export function RoundScorecard({
             scores={scores}
             players={players}
             isActive={isActive}
-            isAdmin={isAdmin}
-            onPress={pressScope}
+  isAdmin={isAdmin}
+  currentPlayerId={currentPlayerId}
+  onPress={pressScope}
             onBetsChanged={(matchId, nineBet, overallBet) =>
               setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
             }
@@ -547,6 +556,7 @@ function MatchCard({
   players,
   isActive,
   isAdmin,
+  currentPlayerId,
   onPress,
   onBetsChanged,
 }: {
@@ -555,6 +565,7 @@ function MatchCard({
   players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
   isActive: boolean
   isAdmin: boolean
+  currentPlayerId: number | null
   onPress: (match: Match, scope: "front" | "back") => void
   onBetsChanged: (matchId: number, nineBet: number, overallBet: number) => void
 }) {
@@ -571,12 +582,19 @@ function MatchCard({
   const frontLabel = front.length ? getMatchStatusLabel(front[front.length - 1].statusA) : "Not started"
   const backLabel = back.length ? getMatchStatusLabel(back[back.length - 1].statusA) : "Not started"
   const overallLabel = overall.length ? getMatchStatusLabel(overall[overall.length - 1].statusA) : "Not started"
+  const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
+  const overallStatus = overall.length ? overall[overall.length - 1].statusA * (currentTeam === "B" ? -1 : 1) : 0
+  const statusTone = overallStatus < 0
+    ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
+    : overallStatus > 0
+      ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
+      : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
   const canPressFront = isActive && front.length > 0 && front.length < 9 && front[front.length - 1].statusA !== 0
   const canPressBack = isActive && back.length > 0 && back.length < 9 && back[back.length - 1].statusA !== 0
 
   return (
-    <Card className="p-4 sm:p-5">
+    <Card className={`p-4 sm:p-5 transition-colors ${statusTone}`}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 font-semibold">
           <Flag className="h-4 w-4 shrink-0 text-[var(--color-primary)]" />
