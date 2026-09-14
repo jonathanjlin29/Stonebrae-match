@@ -20,6 +20,15 @@ export const metadata: Metadata = {
   description:
     "Track 18-hole Nassau matches, presses, and money at Stonebrae. Live leaderboard, personal analytics, bounce-backs and fire-hot streaks.",
   generator: "v0.app",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Stonebrae",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 }
 
 export const viewport: Viewport = {
@@ -32,6 +41,7 @@ export const viewport: Viewport = {
   minimumScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
 }
 
 export default function RootLayout({

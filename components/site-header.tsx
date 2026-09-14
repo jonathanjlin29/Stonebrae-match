@@ -7,7 +7,7 @@ import { ThemeToggle } from "./theme-toggle"
 
 export function SiteHeader({ player }: { player?: Player | null }) {
   return (
-    <header className="glass sticky top-0 z-30">
+    <header className="glass sticky top-0 z-30 pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex min-h-[68px] max-w-5xl flex-wrap items-center justify-between px-4 py-3 sm:flex-nowrap sm:px-6">
         <Link href="/" className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)] shadow-[0_6px_16px_-4px_hsl(150_70%_40%/0.55)]">
