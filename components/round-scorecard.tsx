@@ -286,30 +286,19 @@ export function RoundScorecard({
 
       <section className={`mb-6 grid gap-3 ${tab === "matches" ? "" : "hidden"}`}>
         {matches.map((m) => (
-          <Fragment key={m.id}>
-            <MatchCard
-              match={m}
-              scores={scores}
-              players={players}
-              isActive={isActive}
-              isAdmin={isAdmin}
-              currentPlayerId={currentPlayerId}
-              onPress={pressScope}
-              onBetsChanged={(matchId, nineBet, overallBet) =>
-                setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
-              }
-            />
-            {m.presses.map((p) => (
-              <PressCard
-                key={p.id}
-                press={p}
-                match={m}
-                scores={scores}
-                players={players}
-                currentPlayerId={currentPlayerId}
-              />
-            ))}
-          </Fragment>
+          <MatchCard
+            key={m.id}
+            match={m}
+            scores={scores}
+            players={players}
+            isActive={isActive}
+            isAdmin={isAdmin}
+            currentPlayerId={currentPlayerId}
+            onPress={pressScope}
+            onBetsChanged={(matchId, nineBet, overallBet) =>
+              setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
+            }
+          />
         ))}
       </section>
 
@@ -672,6 +661,20 @@ function MatchCard({
         <StatusRow label="Back" value={backLabel} />
         <StatusRow label="Overall" value={overallLabel} />
       </div>
+      {match.presses.length > 0 && (
+        <div className="mt-3 grid gap-2">
+          {match.presses.map((p) => (
+            <PressRow
+              key={p.id}
+              press={p}
+              match={match}
+              scores={scores}
+              players={players}
+              currentPlayerId={currentPlayerId}
+            />
+          ))}
+        </div>
+      )}
       {canPressAny && (
         <div className="mt-4 border-t border-[var(--color-border)] pt-4">
           {!pressOpen ? (
@@ -785,7 +788,7 @@ function BetEditor({
   )
 }
 
-function PressCard({
+function PressRow({
   press,
   match,
   scores,
@@ -798,12 +801,6 @@ function PressCard({
   players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
   currentPlayerId: number | null
 }) {
-  const byId = Object.fromEntries(players.map((p) => [p.id, p]))
-  const teamAName = match.teamA.map((id) => shortLabel(byId[id])).join(" & ")
-  const teamBName = match.teamB.map((id) => shortLabel(byId[id])).join(" & ")
-  const teamAPlayers = match.teamA.map((id) => byId[id]).filter(Boolean)
-  const teamBPlayers = match.teamB.map((id) => byId[id]).filter(Boolean)
-
   const end = press.scope === "front" ? 8 : 17
   const status = computeMatchStatus(match, scores, players, press.startHole, end)
   const label = status.length ? getMatchStatusLabel(status[status.length - 1].statusA) : "Not started"
@@ -819,29 +816,15 @@ function PressCard({
   const scopeLabel = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front Nine" : "Back Nine"
 
   return (
-    <Card className={`ml-3 border-l-4 p-4 transition-colors sm:p-5 ${statusTone}`}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <Swords className="h-4 w-4 shrink-0 text-[var(--color-gold)]" />
-          <Badge className="bg-[var(--color-gold)]/15 text-[var(--color-gold)]">Press</Badge>
-          <div className="flex -space-x-2">
-            {teamAPlayers.map((p) => (
-              <PlayerAvatar key={p.id} player={p} size="sm" />
-            ))}
-          </div>
-          <span>{teamAName}</span>
-          <span className="font-display text-xs text-[var(--color-muted)]">vs</span>
-          <span>{teamBName}</span>
-          <div className="flex -space-x-2">
-            {teamBPlayers.map((p) => (
-              <PlayerAvatar key={p.id} player={p} size="sm" />
-            ))}
-          </div>
-        </div>
-        <Badge className="tabular">${press.amount}</Badge>
+    <div className={`rounded-2xl border-l-4 px-3.5 py-3 transition-colors ${statusTone}`}>
+      <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold">
+        <Swords className="h-3.5 w-3.5 shrink-0 text-[var(--color-gold)]" />
+        <Badge className="bg-[var(--color-gold)]/15 text-[var(--color-gold)]">Press</Badge>
+        <span className="text-[var(--color-muted)]">{scopeLabel} · from hole {press.startHole + 1}</span>
+        <Badge className="ml-auto tabular">${press.amount}</Badge>
       </div>
-      <StatusRow label={`${scopeLabel} · from hole ${press.startHole + 1}`} value={label} />
-    </Card>
+      <StatusRow label={scopeLabel} value={label} />
+    </div>
   )
 }
 
