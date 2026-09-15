@@ -664,19 +664,22 @@ function MatchCard({
           </Badge>
         )}
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <div className="grid gap-2">
+      <div className="grid gap-1.5 sm:grid-cols-3">
+        <div className="grid gap-1">
           <StatusRow label="Front" value={frontLabel} status={frontStatus} frozen={front.frozen} />
           <HoleTimeline holes={front.holes} teamSign={teamSign} />
         </div>
-        <div className="grid gap-2">
+        <div className="grid gap-1">
           <StatusRow label="Back" value={backLabel} status={backStatus} frozen={back.frozen} />
           <HoleTimeline holes={back.holes} teamSign={teamSign} />
         </div>
-        <StatusRow label="Overall" value={overallLabel} status={overallStatus} frozen={overall.frozen} />
+        <div className="grid gap-1">
+          <StatusRow label="Overall" value={overallLabel} status={overallStatus} frozen={overall.frozen} />
+          <HoleTimeline holes={overall.holes} teamSign={teamSign} />
+        </div>
       </div>
       {match.presses.length > 0 && (
-        <div className="mt-3 grid gap-2">
+        <div className="mt-2.5 grid gap-1.5">
           {match.presses.map((p) => (
             <PressRow
               key={p.id}
@@ -835,15 +838,15 @@ function PressRow({
   const scopeLabel = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front Nine" : "Back Nine"
 
   return (
-    <div className={`rounded-2xl border-l-4 px-3.5 py-3 transition-colors ${statusTone}`}>
-      <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold">
-        <Swords className="h-3.5 w-3.5 shrink-0 text-[var(--color-gold)]" />
-        <Badge className="bg-[var(--color-gold)]/15 text-[var(--color-gold)]">Press</Badge>
+    <div className={`rounded-xl border-l-4 px-2.5 py-2 transition-colors ${statusTone}`}>
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
+        <Swords className="h-3 w-3 shrink-0 text-[var(--color-gold)]" />
+        <Badge className="bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]">Press</Badge>
         <span className="text-[var(--color-muted)]">{scopeLabel} · from hole {press.startHole + 1}</span>
-        <Badge className="ml-auto tabular">${press.amount}</Badge>
+        <Badge className="ml-auto text-[10px] tabular">${press.amount}</Badge>
       </div>
       <StatusRow label={scopeLabel} value={label} status={statusVal} frozen={status.frozen} />
-      <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-2" />
+      <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-1.5" />
     </div>
   )
 }
@@ -999,13 +1002,16 @@ function StatusRow({
         ? "bg-[var(--color-primary)]/10"
         : "bg-[var(--color-surface-2)]"
   return (
-    <div className={`flex items-center justify-between rounded-2xl px-4 py-2.5 transition-colors ${tone}`}>
+    <div className={`flex items-center justify-between rounded-xl px-3 py-2 transition-colors ${tone}`}>
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-        <p className="font-display text-lg tracking-tight">{value}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+        <p className="font-display text-base tracking-tight">{value}</p>
       </div>
       {frozen ? (
-        <Badge className="gap-1 bg-[var(--color-gold)]/15 text-[var(--color-gold)]" title="Match is mathematically decided">
+        <Badge
+          className="gap-1 bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]"
+          title="Match is mathematically decided"
+        >
           <Lock className="h-3 w-3" /> Frozen
         </Badge>
       ) : null}
@@ -1027,7 +1033,7 @@ function HoleTimeline({
 }) {
   if (holes.length === 0) return null
   return (
-    <div className={`flex flex-wrap gap-1.5 ${className}`}>
+    <div className={`flex flex-wrap gap-1 ${className}`}>
       {holes.map(({ hole, holeWinner }) => {
         const outcome =
           holeWinner === "halved" ? "push" : (holeWinner === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
@@ -1041,7 +1047,7 @@ function HoleTimeline({
           <span
             key={hole}
             title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
-            className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold tabular ${tone}`}
+            className={`flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular ${tone}`}
           >
             {hole + 1}
           </span>
