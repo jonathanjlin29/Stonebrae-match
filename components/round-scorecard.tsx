@@ -543,10 +543,16 @@ export function RoundScorecard({
 function SharePanel({ roundId }: { roundId: number }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
-  const shareUrl = typeof window === "undefined" ? "" : `${window.location.origin}/share/${roundId}`
+  // Start empty on both server and the client's first (hydrating) render so the markup matches,
+  // then fill in the real origin-dependent URL once mounted in the browser.
+  const [shareUrl, setShareUrl] = useState("")
+
+  useEffect(() => {
+    setShareUrl(`${window.location.origin}/share/${roundId}`)
+  }, [roundId])
 
   async function copyUrl() {
-    await navigator.clipboard.writeText(`${window.location.origin}/share/${roundId}`)
+    await navigator.clipboard.writeText(shareUrl || `${window.location.origin}/share/${roundId}`)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1800)
   }
