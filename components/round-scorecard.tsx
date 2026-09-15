@@ -149,11 +149,14 @@ export function RoundScorecard({
   }
 
   function commitScore(playerId: number, hole: number) {
-    const key = `${playerId}:${hole}`
     const value = scores[playerId]?.[hole] ?? null
+    // Deliberately don't clear dirtyRef here: a background refresh in flight when this save
+    // started can still land afterward carrying pre-save data. The sync effect below is the
+    // sole authority for clearing a cell's dirty flag, and only does so once the server value
+    // it received actually agrees with what's on screen — so a stale refresh can never wipe out
+    // a value that hasn't been confirmed saved yet.
     start(async () => {
       await saveScoreOffline(round.id, playerId, hole, value)
-      dirtyRef.current.delete(key)
     })
   }
 
@@ -1217,14 +1220,27 @@ function clone(s: Scores): Scores {
 
 // Start from the freshly-fetched server scores, but keep whatever the user currently has typed
 // (or is still saving) for any cell marked dirty, so a refetch mid-edit can't erase live input.
+//
+// A cell only leaves `dirty` once the server value we just received actually agrees with what's
+// on screen. We deliberately don't clear dirty as soon as our own save request resolves: a
+// background refresh that started fetching before that save finished can still land afterward
+// carrying pre-save data, and trusting "my save promise resolved" timing over "the data I just
+// received matches" is what let a stale refresh silently wipe out just-typed scores.
 function mergeScores(server: Scores, local: Scores, dirty: Set<string>): Scores {
   const out = clone(server)
   for (const key of dirty) {
     const [pidStr, holeStr] = key.split(":")
     const pid = Number(pidStr)
     const hole = Number(holeStr)
+    const localValue = local[pid]?.[hole] ?? null
+    const serverValue = out[pid]?.[hole] ?? null
+    if (serverValue === localValue) {
+      // The server has caught up to what's on screen; safe to stop overriding this cell.
+      dirty.delete(key)
+      continue
+    }
     if (!out[pid]) out[pid] = Array(18).fill(null)
-    out[pid][hole] = local[pid]?.[hole] ?? null
+    out[pid][hole] = localValue
   }
   return out
 }
