@@ -665,11 +665,16 @@ function MatchCard({
         )}
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
-        <StatusRow label="Front" value={frontLabel} status={frontStatus} frozen={front.frozen} />
-        <StatusRow label="Back" value={backLabel} status={backStatus} frozen={back.frozen} />
+        <div className="grid gap-2">
+          <StatusRow label="Front" value={frontLabel} status={frontStatus} frozen={front.frozen} />
+          <HoleTimeline holes={front.holes} teamSign={teamSign} />
+        </div>
+        <div className="grid gap-2">
+          <StatusRow label="Back" value={backLabel} status={backStatus} frozen={back.frozen} />
+          <HoleTimeline holes={back.holes} teamSign={teamSign} />
+        </div>
         <StatusRow label="Overall" value={overallLabel} status={overallStatus} frozen={overall.frozen} />
       </div>
-      <HoleTimeline holes={overall.holes} teamSign={teamSign} className="mt-3" />
       {match.presses.length > 0 && (
         <div className="mt-3 grid gap-2">
           {match.presses.map((p) => (
