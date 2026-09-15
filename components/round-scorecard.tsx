@@ -211,10 +211,7 @@ export function RoundScorecard({
       <CelebrationOverlay celebration={celebration} onDismiss={dismissCelebration} />
 
       <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-[var(--color-muted)]">{round.courseName}</p>
-          <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Match Scorecard</h1>
-        </div>
+        <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Match Scorecard</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={manualRefresh}
@@ -225,8 +222,15 @@ export function RoundScorecard({
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
           {!isPublicView && (isActive ? (
-            <Button onClick={finish} disabled={completing} variant="gold">
-              <CheckCircle2 className="h-4 w-4" /> {completing ? "Finishing…" : "Complete Round"}
+            <Button
+              onClick={finish}
+              disabled={completing}
+              variant="gold"
+              className="h-8 px-2.5 text-xs"
+              aria-label={completing ? "Finishing round" : "Complete round"}
+              title={completing ? "Finishing…" : "Complete round"}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
             </Button>
           ) : (
             <Badge className="gap-1.5 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
