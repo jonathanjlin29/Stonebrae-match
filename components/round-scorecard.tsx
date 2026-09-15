@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins } from "lucide-react"
+import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
 import { saveScoreOffline, addPressOffline, completeRoundOffline } from "@/lib/offline-actions"
 import { cachePage } from "@/lib/offline-store"
@@ -536,6 +536,7 @@ export function RoundScorecard({
 }
 
 function SharePanel({ roundId }: { roundId: number }) {
+  const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const shareUrl = typeof window === "undefined" ? "" : `${window.location.origin}/share/${roundId}`
 
@@ -546,15 +547,29 @@ function SharePanel({ roundId }: { roundId: number }) {
   }
 
   return (
-    <div className="mb-5 rounded-xl border border-[var(--color-gold)]/25 bg-[var(--color-gold)]/8 p-4">
-      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--color-foreground)]">
-        <Link2 className="h-4 w-4 text-[var(--color-gold)]" /> Public score link
-      </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <input readOnly value={shareUrl} aria-label="Public score URL" className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-muted)]" />
-        <Button onClick={copyUrl} variant="outline" className="shrink-0"><Copy className="h-4 w-4" /> {copied ? "Copied" : "Copy link"}</Button>
-      </div>
-      <p className="mt-2 text-xs text-[var(--color-muted)]">Anyone with this link can view live scores and matches without signing in.</p>
+    <div className="mb-5 rounded-xl border border-[var(--color-gold)]/25 bg-[var(--color-gold)]/8">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-[var(--color-foreground)]"
+      >
+        <span className="flex items-center gap-2">
+          <Link2 className="h-4 w-4 text-[var(--color-gold)]" /> Public score link
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-[var(--color-muted)] transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input readOnly value={shareUrl} aria-label="Public score URL" className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-muted)]" />
+            <Button onClick={copyUrl} variant="outline" className="shrink-0"><Copy className="h-4 w-4" /> {copied ? "Copied" : "Copy link"}</Button>
+          </div>
+          <p className="mt-2 text-xs text-[var(--color-muted)]">Anyone with this link can view live scores and matches without signing in.</p>
+        </div>
+      )}
     </div>
   )
 }
