@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { saveScore, addPress, completeRound, createRound } from "@/app/actions/rounds"
+import { saveScore, addPress, completeRound, createRound, updatePressAmount } from "@/app/actions/rounds"
 import { createPlayer } from "@/app/actions/players"
 
 const handlers = {
@@ -8,6 +8,8 @@ const handlers = {
   saveScore: (payload: any) => saveScore(payload.roundId, payload.playerId, payload.hole, payload.strokes),
   addPress: (payload: any) =>
     addPress(payload.roundId, payload.matchId, payload.scope, payload.startHole, payload.initiatedBy, payload.amount),
+  updatePressAmount: (payload: any) =>
+    updatePressAmount(payload.roundId, payload.matchId, payload.pressId, payload.amount),
   completeRound: (payload: any) => completeRound(payload.roundId),
 } as const
 

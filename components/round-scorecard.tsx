@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "r
 import { useRouter } from "next/navigation"
 import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
-import { saveScoreOffline, addPressOffline, completeRoundOffline } from "@/lib/offline-actions"
+import { saveScoreOffline, addPressOffline, completeRoundOffline, updatePressAmountOffline } from "@/lib/offline-actions"
 import { cachePage } from "@/lib/offline-store"
 import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
@@ -292,6 +292,7 @@ export function RoundScorecard({
         {matches.map((m) => (
           <MatchCard
             key={m.id}
+            roundId={round.id}
             match={m}
             scores={scores}
             players={players}
@@ -579,6 +580,7 @@ function SharePanel({ roundId }: { roundId: number }) {
 }
 
 function MatchCard({
+  roundId,
   match,
   scores,
   players,
@@ -588,6 +590,7 @@ function MatchCard({
   onPress,
   onBetsChanged,
 }: {
+  roundId: number
   match: Match
   scores: Scores
   players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
@@ -629,8 +632,8 @@ function MatchCard({
       ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
       : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const canPressFront = isActive && front.holes.length > 0 && front.holes.length < 9 && !front.frozen
-  const canPressBack = isActive && back.holes.length > 0 && back.holes.length < 9 && !back.frozen
+  const canPressFront = isActive && !front.frozen && front.holes.length < 9
+  const canPressBack = isActive && !back.frozen && back.holes.length < 9 && front.holes.length === 9
   const canPressOverall = isActive && overall.holes.length > 0 && overall.holes.length < 18 && !overall.frozen
   const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
   const canPressAny = currentNine != null || canPressOverall
@@ -701,6 +704,7 @@ function MatchCard({
           {match.presses.map((p) => (
             <PressRow
               key={p.id}
+              roundId={roundId}
               press={p}
               match={match}
               scores={scores}
@@ -824,12 +828,14 @@ function BetEditor({
 }
 
 function PressRow({
+  roundId,
   press,
   match,
   scores,
   players,
   currentPlayerId,
 }: {
+  roundId: number
   press: Press
   match: Match
   scores: Scores
@@ -861,11 +867,62 @@ function PressRow({
         <Swords className="h-3 w-3 shrink-0 text-[var(--color-gold)]" />
         <Badge className="bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]">Press</Badge>
         <span className="text-[var(--color-muted)]">{scopeLabel} · from hole {press.startHole + 1}</span>
-        <Badge className="ml-auto text-[10px] tabular">${press.amount}</Badge>
+        <div className="ml-auto flex items-center gap-1.5">
+          <PressAmountEditor roundId={roundId} matchId={match.id} press={press} />
+        </div>
       </div>
       <StatusRow label={scopeLabel} value={label} status={statusVal} frozen={status.frozen} />
       <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-1.5" />
     </div>
+  )
+}
+
+function PressAmountEditor({ roundId, matchId, press }: { roundId: number; matchId: number; press: Press }) {
+  const [editing, setEditing] = useState(false)
+  const [amount, setAmount] = useState(String(press.amount))
+  const [, start] = useTransition()
+
+  function commit() {
+    const value = Math.round(Math.max(0, Number(amount) || 0))
+    setAmount(String(value))
+    setEditing(false)
+    if (value === press.amount) return
+    start(async () => {
+      await updatePressAmountOffline(roundId, matchId, press.id, value)
+    })
+  }
+
+  if (editing) {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold tabular">
+        <span className="text-[var(--color-muted)]">$</span>
+        <input
+          type="number"
+          autoFocus
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit()
+            if (e.key === "Escape") {
+              setAmount(String(press.amount))
+              setEditing(false)
+            }
+          }}
+          className="h-6 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 text-center outline-none focus:border-[var(--color-primary)]"
+        />
+      </span>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      className="flex items-center gap-1 text-[10px] font-semibold text-[var(--color-foreground)]"
+    >
+      <Badge className="tabular">${press.amount}</Badge>
+      <span className="text-[var(--color-primary)] underline underline-offset-2">Edit</span>
+    </button>
   )
 }
 

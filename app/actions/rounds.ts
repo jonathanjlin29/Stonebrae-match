@@ -144,6 +144,16 @@ export async function addPress(
   return { ok: true }
 }
 
+export async function updatePressAmount(roundId: number, matchId: number, pressId: string, amount: number) {
+  const rows = await sql`SELECT presses FROM matches WHERE id = ${matchId}`
+  const presses = (rows[0]?.presses ?? []) as any[]
+  const next = presses.map((p) => (p.id === pressId ? { ...p, amount: Math.max(0, Math.round(amount)) } : p))
+  await sql`UPDATE matches SET presses = ${JSON.stringify(next)} WHERE id = ${matchId}`
+  await recomputeRoundMoney(roundId)
+  revalidatePath(`/round/${roundId}`)
+  return { ok: true }
+}
+
 export async function recomputeRoundMoney(roundId: number) {
   const round = await getRound(roundId)
   if (!round) return
