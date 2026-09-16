@@ -160,11 +160,22 @@ export function RoundScorecard({
     })
   }
 
-  function pressScope(match: Match, scope: "front" | "back" | "overall", amount: number) {
+  function pressScope(
+    match: Match,
+    scope: "front" | "back" | "overall",
+    amount: number,
+  ): { ok: true } | { ok: false; reason: string } {
     const [start_, end] = scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
     const status = computeSegmentStatus(match, scores, players, start_, end)
-    if (status.holes.length === 0 || status.frozen || status.holes.length === end - start_ + 1) return
-    if (status.finalStatusA === 0) return
+    if (status.holes.length === 0) {
+      return { ok: false, reason: "No holes have been played on this nine yet." }
+    }
+    if (status.frozen || status.holes.length === end - start_ + 1) {
+      return { ok: false, reason: "This segment is already closed out — there are no holes left to press." }
+    }
+    if (status.finalStatusA === 0) {
+      return { ok: false, reason: "You can't press while the match is all square." }
+    }
     const initiatedBy = status.finalStatusA > 0 ? "B" : "A"
     const startHole = start_ + status.holes.length
     start(async () => {
@@ -182,6 +193,7 @@ export function RoundScorecard({
         )
       }
     })
+    return { ok: true }
   }
 
   function finish() {
@@ -606,12 +618,17 @@ function MatchCard({
   isActive: boolean
   isAdmin: boolean
   currentPlayerId: number | null
-  onPress: (match: Match, scope: "front" | "back" | "overall", amount: number) => void
+  onPress: (
+    match: Match,
+    scope: "front" | "back" | "overall",
+    amount: number,
+  ) => { ok: true } | { ok: false; reason: string }
   onBetsChanged: (matchId: number, nineBet: number, overallBet: number) => void
 }) {
   const [pressOpen, setPressOpen] = useState(false)
   const [pressChoice, setPressChoice] = useState<"nine" | "overall" | null>(null)
   const [pressAmount, setPressAmount] = useState("")
+  const [pressError, setPressError] = useState<string | null>(null)
 
   const byId = Object.fromEntries(players.map((p) => [p.id, p]))
   const teamAName = match.teamA.map((id) => shortLabel(byId[id])).join(" & ")
@@ -641,8 +658,9 @@ function MatchCard({
       ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
       : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const canPressFront = isActive && front.holes.length < 9
-  const canPressBack = isActive && back.holes.length < 9 && front.holes.length === 9
+  const canPressFront = isActive && front.holes.length > 0 && front.holes.length < 9 && !front.frozen
+  const canPressBack =
+    isActive && back.holes.length > 0 && back.holes.length < 9 && front.holes.length === 9 && !back.frozen
   const canPressOverall = isActive && overall.holes.length > 0 && overall.holes.length < 18 && !overall.frozen
   const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
   const canPressAny = currentNine != null || canPressOverall
@@ -650,12 +668,14 @@ function MatchCard({
   function openPress(choice: "nine" | "overall") {
     setPressChoice(choice)
     setPressAmount(String(choice === "overall" ? match.overallBet : match.nineBet))
+    setPressError(null)
   }
 
   function closePress() {
     setPressOpen(false)
     setPressChoice(null)
     setPressAmount("")
+    setPressError(null)
   }
 
   function confirmPress() {
@@ -663,8 +683,12 @@ function MatchCard({
     const scope = pressChoice === "overall" ? "overall" : currentNine
     if (!scope) return
     const amount = Math.round(Math.max(0, Number(pressAmount) || 0))
-    onPress(match, scope, amount)
-    closePress()
+    const result = onPress(match, scope, amount)
+    if (result.ok) {
+      closePress()
+    } else {
+      setPressError(result.reason)
+    }
   }
 
   return (
@@ -758,30 +782,37 @@ function MatchCard({
               </button>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold">
-                Press {pressChoice === "overall" ? "Overall" : `${currentNine === "front" ? "Front" : "Back"} Nine`} for
-              </span>
-              <span className="text-[var(--color-muted)]">$</span>
-              <input
-                type="number"
-                autoFocus
-                value={pressAmount}
-                onChange={(e) => setPressAmount(e.target.value)}
-                className="h-9 w-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
-              />
-              <button
-                onClick={confirmPress}
-                className="rounded-full bg-[var(--color-gold)] px-4 py-2 text-sm font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
-              >
-                Confirm
-              </button>
-              <button
-                onClick={closePress}
-                className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
-              >
-                Cancel
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold">
+                  Press {pressChoice === "overall" ? "Overall" : `${currentNine === "front" ? "Front" : "Back"} Nine`} for
+                </span>
+                <span className="text-[var(--color-muted)]">$</span>
+                <input
+                  type="number"
+                  autoFocus
+                  value={pressAmount}
+                  onChange={(e) => setPressAmount(e.target.value)}
+                  className="h-9 w-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+                />
+                <button
+                  onClick={confirmPress}
+                  className="rounded-full bg-[var(--color-gold)] px-4 py-2 text-sm font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
+                >
+                  Confirm
+                </button>
+                <button
+                  onClick={closePress}
+                  className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+                >
+                  Cancel
+                </button>
+              </div>
+              {pressError && (
+                <p className="text-sm font-medium text-[var(--color-danger)]" role="alert">
+                  {pressError}
+                </p>
+              )}
             </div>
           )}
         </div>
