@@ -733,27 +733,26 @@ function MatchCard({
               <Swords className="h-4 w-4" /> Press
             </button>
           ) : !pressChoice ? (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {currentNine && (
                 <button
                   onClick={() => openPress("nine")}
-                  className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl bg-[var(--color-surface-2)] p-2 text-center text-xs font-semibold leading-tight transition-colors hover:bg-[var(--color-border)]"
+                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
                 >
-                  {currentNine === "front" ? "Front" : "Back"}
-                  <span className="text-[10px] font-normal text-[var(--color-muted)]">Nine</span>
+                  Press {currentNine === "front" ? "Front" : "Back"} Nine
                 </button>
               )}
               {canPressOverall && (
                 <button
                   onClick={() => openPress("overall")}
-                  className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl bg-[var(--color-surface-2)] p-2 text-center text-xs font-semibold leading-tight transition-colors hover:bg-[var(--color-border)]"
+                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
                 >
-                  Overall
+                  Press Overall
                 </button>
               )}
               <button
                 onClick={closePress}
-                className="flex aspect-square flex-col items-center justify-center rounded-xl text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+                className="rounded-full px-4 py-2.5 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
               >
                 Cancel
               </button>
