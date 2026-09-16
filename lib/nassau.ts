@@ -75,20 +75,76 @@ export function getMatchStatusLabel(statusA: number): string {
   return `${Math.abs(statusA)} DN`
 }
 
+export type SegmentStatus = {
+  // Hole-by-hole results within the segment, truncated at the freeze point (if any) so holes
+  // played after a mathematically decided outcome are not counted.
+  holes: { hole: number; holeWinner: "A" | "B" | "halved"; statusA: number }[]
+  finalStatusA: number
+  frozen: boolean
+  frozenAtHole: number | null // 0-indexed hole that clinched the segment
+  // Standard match-play closeout notation, e.g. "5&4" for 5 up with 4 to play.
+  closeoutLabel: string | null
+}
+
+// Computes a segment's (front/back/overall/press) hole-by-hole status, then detects dormie/
+// closeout: once a side's lead exceeds the holes remaining in the segment, the outcome can no
+// longer change, so the segment "freezes" — later holes are ignored for this segment even if
+// they get entered (other segments keep counting independently).
+export function computeSegmentStatus(
+  match: Match,
+  scores: Scores,
+  players: Player[],
+  start: number,
+  end: number,
+): SegmentStatus {
+  const raw = computeMatchStatus(match, scores, players, start, end)
+  const totalHoles = end - start + 1
+  const holes: SegmentStatus["holes"] = []
+  let frozen = false
+  let frozenAtHole: number | null = null
+  let closeoutLabel: string | null = null
+
+  for (const r of raw) {
+    holes.push(r)
+    const holesPlayed = r.hole - start + 1
+    const holesRemaining = totalHoles - holesPlayed
+    if (holesRemaining > 0 && Math.abs(r.statusA) > holesRemaining) {
+      frozen = true
+      frozenAtHole = r.hole
+      closeoutLabel = `${Math.abs(r.statusA)}&${holesRemaining}`
+      break
+    }
+  }
+
+  const finalStatusA = holes.length > 0 ? holes[holes.length - 1].statusA : 0
+  return { holes, finalStatusA, frozen, frozenAtHole, closeoutLabel }
+}
+
 function segmentWinner(match: Match, scores: Scores, players: Player[], start: number, end: number): "A" | "B" | "halved" | null {
-  const results = computeMatchStatus(match, scores, players, start, end)
-  if (results.length === 0) return null
-  const finalStatus = results[results.length - 1].statusA
-  if (finalStatus > 0) return "A"
-  if (finalStatus < 0) return "B"
+  const status = computeSegmentStatus(match, scores, players, start, end)
+  if (status.holes.length === 0) return null
+  if (status.finalStatusA > 0) return "A"
+  if (status.finalStatusA < 0) return "B"
   return "halved"
+}
+
+// Divides a whole-dollar amount into `n` whole-dollar shares as evenly as possible.
+// The remainder (if any) is distributed one dollar at a time to the first shares, so
+// the returned shares always sum exactly to `amount`.
+export function splitInteger(amount: number, n: number): number[] {
+  if (n <= 0) return []
+  const whole = Math.round(amount)
+  const base = Math.floor(whole / n)
+  const remainder = whole - base * n
+  return Array.from({ length: n }, (_, i) => base + (i < remainder ? 1 : 0))
 }
 
 // ─── MONEY ─────────────────────────────────────────────────────────
 // Nassau: front (1-9) and back (10-18) are each worth `nineBet`; overall (1-18)
 // is worth `overallBet`. Each press is worth its parent segment's bet over its
 // own hole range. Winning team collectively wins the bet, split evenly; losing
-// team splits the loss.
+// team splits the loss. All splits use whole dollars so every player's money is
+// an integer and each segment nets to exactly zero across both teams.
 export function computeMatchMoney(match: Match, scores: Scores, players: Player[]) {
   const money: Record<number, number> = {}
   for (const id of [...match.teamA, ...match.teamB]) money[id] = 0
@@ -97,10 +153,10 @@ export function computeMatchMoney(match: Match, scores: Scores, players: Player[
     if (!winner || winner === "halved") return
     const winners = winner === "A" ? match.teamA : match.teamB
     const losers = winner === "A" ? match.teamB : match.teamA
-    const winShare = amount / winners.length
-    const loseShare = amount / losers.length
-    for (const id of winners) money[id] += winShare
-    for (const id of losers) money[id] -= loseShare
+    const winShares = splitInteger(Math.round(amount), winners.length)
+    const loseShares = splitInteger(Math.round(amount), losers.length)
+    winners.forEach((id, i) => (money[id] += winShares[i]))
+    losers.forEach((id, i) => (money[id] -= loseShares[i]))
   }
 
   const front = segmentWinner(match, scores, players, 0, 8)
@@ -115,7 +171,8 @@ export function computeMatchMoney(match: Match, scores: Scores, players: Player[
     const end = press.scope === "front" ? 8 : 17
     const w = segmentWinner(match, scores, players, press.startHole, end)
     pressResults[press.id] = w
-    applySegment(w, match.nineBet)
+    const defaultAmount = press.scope === "overall" ? match.overallBet : match.nineBet
+    applySegment(w, press.amount ?? defaultAmount)
   }
 
   return { money, results: { front, back, overall, pressResults } }

@@ -17,9 +17,10 @@ export type RoundPlayer = Player & {
 export type Press = {
   id: string
   matchId: number
-  scope: "front" | "back"
+  scope: "front" | "back" | "overall"
   startHole: number // 0-indexed
   initiatedBy: "A" | "B"
+  amount: number
 }
 
 export type MatchResults = {

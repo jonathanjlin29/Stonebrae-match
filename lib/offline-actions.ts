@@ -1,6 +1,6 @@
 "use client"
 
-import { addPress, completeRound, createRound, saveScore } from "@/app/actions/rounds"
+import { addPress, completeRound, createRound, saveScore, updatePressAmount } from "@/app/actions/rounds"
 import { createPlayer } from "@/app/actions/players"
 import { COURSE } from "@/lib/course"
 import { cachePage, enqueueMutation, replayQueuedMutations, resolveId, setActiveOfflineRound } from "@/lib/offline-store"
@@ -104,13 +104,30 @@ export async function saveScoreOffline(roundId: number, playerId: number, hole: 
   return { ok: true, queued: true }
 }
 
-export async function addPressOffline(roundId: number, matchId: number, scope: "front" | "back", startHole: number, initiatedBy: "A" | "B") {
+export async function addPressOffline(
+  roundId: number,
+  matchId: number,
+  scope: "front" | "back" | "overall",
+  startHole: number,
+  initiatedBy: "A" | "B",
+  amount: number,
+) {
   const resolvedRoundId = await resolveMaybeTempId(roundId)
   const resolvedMatchId = await resolveMaybeTempId(matchId)
   if (resolvedRoundId >= 0 && resolvedMatchId >= 0 && navigator.onLine) {
-    return addPress(resolvedRoundId, resolvedMatchId, scope, startHole, initiatedBy)
+    return addPress(resolvedRoundId, resolvedMatchId, scope, startHole, initiatedBy, amount)
   }
-  await enqueueMutation("addPress", { roundId: resolvedRoundId, matchId: resolvedMatchId, scope, startHole, initiatedBy })
+  await enqueueMutation("addPress", { roundId: resolvedRoundId, matchId: resolvedMatchId, scope, startHole, initiatedBy, amount })
+  return { ok: true, queued: true }
+}
+
+export async function updatePressAmountOffline(roundId: number, matchId: number, pressId: string, amount: number) {
+  const resolvedRoundId = await resolveMaybeTempId(roundId)
+  const resolvedMatchId = await resolveMaybeTempId(matchId)
+  if (resolvedRoundId >= 0 && resolvedMatchId >= 0 && navigator.onLine) {
+    return updatePressAmount(resolvedRoundId, resolvedMatchId, pressId, amount)
+  }
+  await enqueueMutation("updatePressAmount", { roundId: resolvedRoundId, matchId: resolvedMatchId, pressId, amount })
   return { ok: true, queued: true }
 }
 

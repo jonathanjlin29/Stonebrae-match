@@ -2,27 +2,29 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2 } from "lucide-react"
+import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
-import { saveScoreOffline, addPressOffline, completeRoundOffline } from "@/lib/offline-actions"
+import { saveScoreOffline, addPressOffline, completeRoundOffline, updatePressAmountOffline } from "@/lib/offline-actions"
 import { cachePage } from "@/lib/offline-store"
 import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
   computeMatchMoney,
   computeMatchStatus,
+  computeSegmentStatus,
   getMatchStatusLabel,
   isBounceBack,
   birdieStreakEndingAt,
   relToPar,
   getStrokesGiven,
 } from "@/lib/nassau"
+import { computeSettlement } from "@/lib/settlement"
 import { COURSE } from "@/lib/course"
-import type { Match, Round, Scores } from "@/lib/types"
+import type { Match, Press, Round, Scores } from "@/lib/types"
 import { formatMoney, moneyClass, shortLabel } from "@/lib/util"
 import { Button, Card, Badge, PlayerAvatar, SegmentedControl } from "./ui"
 
 type Celebration = { type: "bounce" | "fire" | "birdie"; name: string; detail: string; key: number }
-type Tab = "matches" | "scorecard"
+type Tab = "matches" | "scorecard" | "money"
 
 export function RoundScorecard({
   round,
@@ -43,7 +45,7 @@ export function RoundScorecard({
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [completing, setCompleting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const [tab, setTab] = useState<Tab>("matches")
+  const [tab, setTab] = useState<Tab>("scorecard")
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -147,29 +149,34 @@ export function RoundScorecard({
   }
 
   function commitScore(playerId: number, hole: number) {
-    const key = `${playerId}:${hole}`
     const value = scores[playerId]?.[hole] ?? null
+    // Deliberately don't clear dirtyRef here: a background refresh in flight when this save
+    // started can still land afterward carrying pre-save data. The sync effect below is the
+    // sole authority for clearing a cell's dirty flag, and only does so once the server value
+    // it received actually agrees with what's on screen — so a stale refresh can never wipe out
+    // a value that hasn't been confirmed saved yet.
     start(async () => {
       await saveScoreOffline(round.id, playerId, hole, value)
-      dirtyRef.current.delete(key)
     })
   }
 
-  function pressScope(match: Match, scope: "front" | "back") {
-    const [start_, end] = scope === "front" ? [0, 8] : [9, 17]
-    const status = computeMatchStatus(match, scores, players, start_, end)
-    if (status.length === 0 || status.length === 9) return
-    const last = status[status.length - 1]
-    if (last.statusA === 0) return
-    const initiatedBy = last.statusA > 0 ? "B" : "A"
-    const startHole = start_ + status.length
+  function pressScope(match: Match, scope: "front" | "back" | "overall", amount: number) {
+    const [start_, end] = scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
+    const status = computeSegmentStatus(match, scores, players, start_, end)
+    if (status.holes.length === 0 || status.frozen || status.holes.length === end - start_ + 1) return
+    if (status.finalStatusA === 0) return
+    const initiatedBy = status.finalStatusA > 0 ? "B" : "A"
+    const startHole = start_ + status.holes.length
     start(async () => {
-      const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy)
+      const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy, amount)
       if (res.ok) {
         setMatches((prev) =>
           prev.map((m) =>
             m.id === match.id
-              ? { ...m, presses: [...m.presses, { id: `local-${Date.now()}`, matchId: match.id, scope, startHole, initiatedBy }] }
+              ? {
+                  ...m,
+                  presses: [...m.presses, { id: `local-${Date.now()}`, matchId: match.id, scope, startHole, initiatedBy, amount }],
+                }
               : m,
           ),
         )
@@ -207,10 +214,7 @@ export function RoundScorecard({
       <CelebrationOverlay celebration={celebration} onDismiss={dismissCelebration} />
 
       <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-[var(--color-muted)]">{round.courseName}</p>
-          <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Match Scorecard</h1>
-        </div>
+        <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Match Scorecard</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={manualRefresh}
@@ -221,8 +225,15 @@ export function RoundScorecard({
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
           {!isPublicView && (isActive ? (
-            <Button onClick={finish} disabled={completing} variant="gold">
-              <CheckCircle2 className="h-4 w-4" /> {completing ? "Finishing…" : "Complete Round"}
+            <Button
+              onClick={finish}
+              disabled={completing}
+              variant="gold"
+              className="h-8 px-2.5 text-xs"
+              aria-label={completing ? "Finishing round" : "Complete round"}
+              title={completing ? "Finishing…" : "Complete round"}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
             </Button>
           ) : (
             <Badge className="gap-1.5 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
@@ -269,23 +280,29 @@ export function RoundScorecard({
           value={tab}
           onChange={setTab}
           options={[
-            { value: "matches", label: "Matches" },
             { value: "scorecard", label: "Scorecard" },
+            { value: "matches", label: "Matches" },
+            { value: "money", label: "Money" },
           ]}
         />
       </div>
+
+      <section className={`mb-6 ${tab === "money" ? "" : "hidden"}`}>
+        <MoneyTab matches={matches} scores={scores} players={players} totals={totals} />
+      </section>
 
       <section className={`mb-6 grid gap-3 ${tab === "matches" ? "" : "hidden"}`}>
         {matches.map((m) => (
           <MatchCard
             key={m.id}
+            roundId={round.id}
             match={m}
             scores={scores}
             players={players}
             isActive={isActive}
-  isAdmin={isAdmin}
-  currentPlayerId={currentPlayerId}
-  onPress={pressScope}
+            isAdmin={isAdmin}
+            currentPlayerId={currentPlayerId}
+            onPress={pressScope}
             onBetsChanged={(matchId, nineBet, overallBet) =>
               setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
             }
@@ -527,30 +544,52 @@ export function RoundScorecard({
 }
 
 function SharePanel({ roundId }: { roundId: number }) {
+  const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
-  const shareUrl = typeof window === "undefined" ? "" : `${window.location.origin}/share/${roundId}`
+  // Start empty on both server and the client's first (hydrating) render so the markup matches,
+  // then fill in the real origin-dependent URL once mounted in the browser.
+  const [shareUrl, setShareUrl] = useState("")
+
+  useEffect(() => {
+    setShareUrl(`${window.location.origin}/share/${roundId}`)
+  }, [roundId])
 
   async function copyUrl() {
-    await navigator.clipboard.writeText(`${window.location.origin}/share/${roundId}`)
+    await navigator.clipboard.writeText(shareUrl || `${window.location.origin}/share/${roundId}`)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1800)
   }
 
   return (
-    <div className="mb-5 rounded-xl border border-[var(--color-gold)]/25 bg-[var(--color-gold)]/8 p-4">
-      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--color-foreground)]">
-        <Link2 className="h-4 w-4 text-[var(--color-gold)]" /> Public score link
-      </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <input readOnly value={shareUrl} aria-label="Public score URL" className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-muted)]" />
-        <Button onClick={copyUrl} variant="outline" className="shrink-0"><Copy className="h-4 w-4" /> {copied ? "Copied" : "Copy link"}</Button>
-      </div>
-      <p className="mt-2 text-xs text-[var(--color-muted)]">Anyone with this link can view live scores and matches without signing in.</p>
+    <div className="mb-5 rounded-xl border border-[var(--color-gold)]/25 bg-[var(--color-gold)]/8">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-[var(--color-foreground)]"
+      >
+        <span className="flex items-center gap-2">
+          <Link2 className="h-4 w-4 text-[var(--color-gold)]" /> Public score link
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-[var(--color-muted)] transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input readOnly value={shareUrl} aria-label="Public score URL" className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-muted)]" />
+            <Button onClick={copyUrl} variant="outline" className="shrink-0"><Copy className="h-4 w-4" /> {copied ? "Copied" : "Copy link"}</Button>
+          </div>
+          <p className="mt-2 text-xs text-[var(--color-muted)]">Anyone with this link can view live scores and matches without signing in.</p>
+        </div>
+      )}
     </div>
   )
 }
 
 function MatchCard({
+  roundId,
   match,
   scores,
   players,
@@ -560,38 +599,74 @@ function MatchCard({
   onPress,
   onBetsChanged,
 }: {
+  roundId: number
   match: Match
   scores: Scores
   players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
   isActive: boolean
   isAdmin: boolean
   currentPlayerId: number | null
-  onPress: (match: Match, scope: "front" | "back") => void
+  onPress: (match: Match, scope: "front" | "back" | "overall", amount: number) => void
   onBetsChanged: (matchId: number, nineBet: number, overallBet: number) => void
 }) {
+  const [pressOpen, setPressOpen] = useState(false)
+  const [pressChoice, setPressChoice] = useState<"nine" | "overall" | null>(null)
+  const [pressAmount, setPressAmount] = useState("")
+
   const byId = Object.fromEntries(players.map((p) => [p.id, p]))
   const teamAName = match.teamA.map((id) => shortLabel(byId[id])).join(" & ")
   const teamBName = match.teamB.map((id) => shortLabel(byId[id])).join(" & ")
   const teamAPlayers = match.teamA.map((id) => byId[id]).filter(Boolean)
   const teamBPlayers = match.teamB.map((id) => byId[id]).filter(Boolean)
 
-  const front = computeMatchStatus(match, scores, players, 0, 8)
-  const back = computeMatchStatus(match, scores, players, 9, 17)
-  const overall = computeMatchStatus(match, scores, players, 0, 17)
+  const front = computeSegmentStatus(match, scores, players, 0, 8)
+  const back = computeSegmentStatus(match, scores, players, 9, 17)
+  const overall = computeSegmentStatus(match, scores, players, 0, 17)
 
-  const frontLabel = front.length ? getMatchStatusLabel(front[front.length - 1].statusA) : "Not started"
-  const backLabel = back.length ? getMatchStatusLabel(back[back.length - 1].statusA) : "Not started"
-  const overallLabel = overall.length ? getMatchStatusLabel(overall[overall.length - 1].statusA) : "Not started"
+  const frontLabel = front.holes.length ? (front.frozen ? front.closeoutLabel! : getMatchStatusLabel(front.finalStatusA)) : "Not started"
+  const backLabel = back.holes.length ? (back.frozen ? back.closeoutLabel! : getMatchStatusLabel(back.finalStatusA)) : "Not started"
+  const overallLabel = overall.holes.length
+    ? overall.frozen
+      ? overall.closeoutLabel!
+      : getMatchStatusLabel(overall.finalStatusA)
+    : "Not started"
   const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
-  const overallStatus = overall.length ? overall[overall.length - 1].statusA * (currentTeam === "B" ? -1 : 1) : 0
+  const teamSign = currentTeam === "B" ? -1 : 1
+  const frontStatus = front.holes.length ? front.finalStatusA * teamSign : 0
+  const backStatus = back.holes.length ? back.finalStatusA * teamSign : 0
+  const overallStatus = overall.holes.length ? overall.finalStatusA * teamSign : 0
   const statusTone = overallStatus < 0
     ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
     : overallStatus > 0
       ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
       : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const canPressFront = isActive && front.length > 0 && front.length < 9 && front[front.length - 1].statusA !== 0
-  const canPressBack = isActive && back.length > 0 && back.length < 9 && back[back.length - 1].statusA !== 0
+  const canPressFront = isActive && !front.frozen && front.holes.length < 9
+  const canPressBack =
+    isActive && !back.frozen && back.holes.length < 9 && (front.holes.length === 9 || front.frozen)
+  const canPressOverall = isActive && overall.holes.length > 0 && overall.holes.length < 18 && !overall.frozen
+  const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
+  const canPressAny = currentNine != null || canPressOverall
+
+  function openPress(choice: "nine" | "overall") {
+    setPressChoice(choice)
+    setPressAmount(String(choice === "overall" ? match.overallBet : match.nineBet))
+  }
+
+  function closePress() {
+    setPressOpen(false)
+    setPressChoice(null)
+    setPressAmount("")
+  }
+
+  function confirmPress() {
+    if (!pressChoice) return
+    const scope = pressChoice === "overall" ? "overall" : currentNine
+    if (!scope) return
+    const amount = Math.round(Math.max(0, Number(pressAmount) || 0))
+    onPress(match, scope, amount)
+    closePress()
+  }
 
   return (
     <Card className={`p-4 sm:p-5 transition-colors ${statusTone}`}>
@@ -620,18 +695,96 @@ function MatchCard({
           </Badge>
         )}
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <StatusRow label="Front" value={frontLabel} canPress={canPressFront} onPress={() => onPress(match, "front")} />
-        <StatusRow label="Back" value={backLabel} canPress={canPressBack} onPress={() => onPress(match, "back")} />
-        <StatusRow label="Overall" value={overallLabel} canPress={false} onPress={() => {}} />
+      <div className="grid gap-1.5 sm:grid-cols-3">
+        <div className="grid gap-1">
+          <StatusRow label="Front" value={frontLabel} status={frontStatus} frozen={front.frozen} />
+          <HoleTimeline holes={front.holes} teamSign={teamSign} />
+        </div>
+        <div className="grid gap-1">
+          <StatusRow label="Back" value={backLabel} status={backStatus} frozen={back.frozen} />
+          <HoleTimeline holes={back.holes} teamSign={teamSign} />
+        </div>
+        <div className="grid gap-1">
+          <StatusRow label="Overall" value={overallLabel} status={overallStatus} frozen={overall.frozen} />
+          <HoleTimeline holes={overall.holes} teamSign={teamSign} />
+        </div>
       </div>
       {match.presses.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-2.5 grid gap-1.5">
           {match.presses.map((p) => (
-            <Badge key={p.id} className="gap-1 bg-[var(--color-gold)]/15 text-[var(--color-gold)]">
-              <Swords className="h-3 w-3" /> Press · hole {p.startHole + 1}
-            </Badge>
+            <PressRow
+              key={p.id}
+              roundId={roundId}
+              press={p}
+              match={match}
+              scores={scores}
+              players={players}
+              currentPlayerId={currentPlayerId}
+            />
           ))}
+        </div>
+      )}
+      {canPressAny && (
+        <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+          {!pressOpen ? (
+            <button
+              onClick={() => setPressOpen(true)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-full bg-[var(--color-gold)] px-4 py-2.5 text-sm font-bold text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-[0.98] hover:brightness-105"
+            >
+              <Swords className="h-4 w-4" /> Press
+            </button>
+          ) : !pressChoice ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {currentNine && (
+                <button
+                  onClick={() => openPress("nine")}
+                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
+                >
+                  Press {currentNine === "front" ? "Front" : "Back"} Nine
+                </button>
+              )}
+              {canPressOverall && (
+                <button
+                  onClick={() => openPress("overall")}
+                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
+                >
+                  Press Overall
+                </button>
+              )}
+              <button
+                onClick={closePress}
+                className="rounded-full px-4 py-2.5 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold">
+                Press {pressChoice === "overall" ? "Overall" : `${currentNine === "front" ? "Front" : "Back"} Nine`} for
+              </span>
+              <span className="text-[var(--color-muted)]">$</span>
+              <input
+                type="number"
+                autoFocus
+                value={pressAmount}
+                onChange={(e) => setPressAmount(e.target.value)}
+                className="h-9 w-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+              />
+              <button
+                onClick={confirmPress}
+                className="rounded-full bg-[var(--color-gold)] px-4 py-2 text-sm font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={closePress}
+                className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -647,11 +800,11 @@ function BetEditor({
 }) {
   const [nineBet, setNineBet] = useState(String(match.nineBet))
   const [overallBet, setOverallBet] = useState(String(match.overallBet))
-  const [pending, start] = useTransition()
+  const [, start] = useTransition()
 
   function commit() {
-    const n = Math.max(0, Number(nineBet) || 0)
-    const o = Math.max(0, Number(overallBet) || 0)
+    const n = Math.round(Math.max(0, Number(nineBet) || 0))
+    const o = Math.round(Math.max(0, Number(overallBet) || 0))
     setNineBet(String(n))
     setOverallBet(String(o))
     if (n === match.nineBet && o === match.overallBet) return
@@ -662,27 +815,256 @@ function BetEditor({
   }
 
   return (
-    <div className="flex items-center gap-1.5 text-xs">
+    <div className="flex items-center gap-1 text-sm font-semibold tabular">
       <span className="text-[var(--color-muted)]">$</span>
       <input
         type="number"
         value={nineBet}
         onChange={(e) => setNineBet(e.target.value)}
         onBlur={commit}
-        disabled={pending}
-        className="h-7 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+        className="h-7 w-12 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1 text-center outline-none focus:border-[var(--color-primary)]"
       />
-      <span className="text-[var(--color-muted)]">/9 ·</span>
-      <span className="text-[var(--color-muted)]">$</span>
+      <span className="text-[var(--color-muted)]">/9 · $</span>
       <input
         type="number"
         value={overallBet}
         onChange={(e) => setOverallBet(e.target.value)}
         onBlur={commit}
-        disabled={pending}
-        className="h-7 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+        className="h-7 w-12 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1 text-center outline-none focus:border-[var(--color-primary)]"
       />
       <span className="text-[var(--color-muted)]">ovr</span>
+    </div>
+  )
+}
+
+function PressRow({
+  roundId,
+  press,
+  match,
+  scores,
+  players,
+  currentPlayerId,
+}: {
+  roundId: number
+  press: Press
+  match: Match
+  scores: Scores
+  players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
+  currentPlayerId: number | null
+}) {
+  const end = press.scope === "front" ? 8 : 17
+  const status = computeSegmentStatus(match, scores, players, press.startHole, end)
+  const label = status.holes.length
+    ? status.frozen
+      ? status.closeoutLabel!
+      : getMatchStatusLabel(status.finalStatusA)
+    : "Not started"
+  const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
+  const teamSign = currentTeam === "B" ? -1 : 1
+  const statusVal = status.holes.length ? status.finalStatusA * teamSign : 0
+  const statusTone =
+    statusVal < 0
+      ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
+      : statusVal > 0
+        ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
+        : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
+
+  const scopeLabel = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front Nine" : "Back Nine"
+
+  return (
+    <div className={`rounded-xl border-l-4 px-2.5 py-2 transition-colors ${statusTone}`}>
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
+        <Swords className="h-3 w-3 shrink-0 text-[var(--color-gold)]" />
+        <Badge className="bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]">Press</Badge>
+        <span className="text-[var(--color-muted)]">{scopeLabel} · from hole {press.startHole + 1}</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <PressAmountEditor roundId={roundId} matchId={match.id} press={press} />
+        </div>
+      </div>
+      <StatusRow label={scopeLabel} value={label} status={statusVal} frozen={status.frozen} />
+      <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-1.5" />
+    </div>
+  )
+}
+
+function PressAmountEditor({ roundId, matchId, press }: { roundId: number; matchId: number; press: Press }) {
+  const [editing, setEditing] = useState(false)
+  const [amount, setAmount] = useState(String(press.amount))
+  const [, start] = useTransition()
+
+  function commit() {
+    const value = Math.round(Math.max(0, Number(amount) || 0))
+    setAmount(String(value))
+    setEditing(false)
+    if (value === press.amount) return
+    start(async () => {
+      await updatePressAmountOffline(roundId, matchId, press.id, value)
+    })
+  }
+
+  if (editing) {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold tabular">
+        <span className="text-[var(--color-muted)]">$</span>
+        <input
+          type="number"
+          autoFocus
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit()
+            if (e.key === "Escape") {
+              setAmount(String(press.amount))
+              setEditing(false)
+            }
+          }}
+          className="h-6 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 text-center outline-none focus:border-[var(--color-primary)]"
+        />
+      </span>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      className="flex items-center gap-1 text-[10px] font-semibold text-[var(--color-foreground)]"
+    >
+      <Badge className="tabular">${press.amount}</Badge>
+      <span className="text-[var(--color-primary)] underline underline-offset-2">Edit</span>
+    </button>
+  )
+}
+
+function MoneyTab({
+  matches,
+  scores,
+  players,
+  totals,
+}: {
+  matches: Match[]
+  scores: Scores
+  players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
+  totals: Record<number, number>
+}) {
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]))
+  const sortedPlayers = [...players].sort((a, b) => (totals[b.id] ?? 0) - (totals[a.id] ?? 0))
+  const settlement = computeSettlement(totals, players)
+
+  return (
+    <div className="grid gap-4">
+      <Card className="p-4 sm:p-5">
+        <h2 className="mb-3 font-display text-lg tracking-tight">Balances</h2>
+        <div className="grid gap-2">
+          {sortedPlayers.map((p) => (
+            <div key={p.id} className="flex items-center justify-between rounded-2xl bg-[var(--color-surface-2)] px-4 py-2.5">
+              <div className="flex items-center gap-2 font-medium">
+                <PlayerAvatar player={p} size="sm" />
+                <span>{shortLabel(p)}</span>
+              </div>
+              <span className={`font-display text-lg tabular ${moneyClass(totals[p.id] ?? 0)}`}>
+                {formatMoney(totals[p.id] ?? 0)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-4 sm:p-5">
+        <h2 className="mb-3 flex items-center gap-2 font-display text-lg tracking-tight">
+          <HandCoins className="h-5 w-5 text-[var(--color-gold)]" /> Settle Up
+        </h2>
+        {settlement.length === 0 ? (
+          <p className="text-sm text-[var(--color-muted)]">All square — no money owed.</p>
+        ) : (
+          <div className="grid gap-2">
+            {settlement.map((t, i) => (
+              <div key={i} className="flex items-center justify-between rounded-2xl bg-[var(--color-surface-2)] px-4 py-2.5">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <span>{shortLabel(byId[t.from])}</span>
+                  <ArrowRight className="h-4 w-4 text-[var(--color-muted)]" />
+                  <span>{shortLabel(byId[t.to])}</span>
+                </div>
+                <span className="font-display text-lg tabular text-[var(--color-primary)]">${t.amount}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4 sm:p-5">
+        <h2 className="mb-3 font-display text-lg tracking-tight">Match Breakdown</h2>
+        <div className="grid gap-3">
+          {matches.map((m) => {
+            const teamAName = m.teamA.map((id) => shortLabel(byId[id])).join(" & ")
+            const teamBName = m.teamB.map((id) => shortLabel(byId[id])).join(" & ")
+            const { results } = computeMatchMoney(m, scores, players)
+            const segments: { label: string; winner: "A" | "B" | "halved" | null; amount: number }[] = [
+              { label: "Front", winner: results.front, amount: m.nineBet },
+              { label: "Back", winner: results.back, amount: m.nineBet },
+              { label: "Overall", winner: results.overall, amount: m.overallBet },
+            ]
+            return (
+              <div key={m.id} className="rounded-2xl border border-[var(--color-border)] p-3.5">
+                <p className="mb-2.5 text-sm font-semibold">
+                  {teamAName} <span className="text-[var(--color-muted)]">vs</span> {teamBName}
+                </p>
+                <div className="grid gap-1.5">
+                  {segments.map((s) => (
+                    <MoneySegmentRow
+                      key={s.label}
+                      label={s.label}
+                      winner={s.winner}
+                      amount={s.amount}
+                      winnerName={s.winner === "A" ? teamAName : s.winner === "B" ? teamBName : null}
+                    />
+                  ))}
+                  {m.presses.map((p) => {
+                    const scopeLabel = p.scope === "overall" ? "Overall" : p.scope === "front" ? "Front" : "Back"
+                    const winner = results.pressResults[p.id]
+                    const amount = p.amount ?? (p.scope === "overall" ? m.overallBet : m.nineBet)
+                    return (
+                      <MoneySegmentRow
+                        key={p.id}
+                        label={`Press · ${scopeLabel} · hole ${p.startHole + 1}`}
+                        winner={winner}
+                        amount={amount}
+                        winnerName={winner === "A" ? teamAName : winner === "B" ? teamBName : null}
+                        indent
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function MoneySegmentRow({
+  label,
+  winner,
+  amount,
+  winnerName,
+  indent = false,
+}: {
+  label: string
+  winner: "A" | "B" | "halved" | null
+  amount: number
+  winnerName: string | null
+  indent?: boolean
+}) {
+  const outcome = winner === null ? "Not settled" : winner === "halved" ? "Halved" : `${winnerName} won`
+  return (
+    <div className={`flex items-center justify-between text-sm ${indent ? "ml-3 text-[var(--color-muted)]" : ""}`}>
+      <span className={indent ? "" : "font-medium"}>{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-[var(--color-muted)]">{outcome}</span>
+        {winner && winner !== "halved" ? <span className="font-semibold tabular text-[var(--color-primary)]">${amount}</span> : null}
+      </div>
     </div>
   )
 }
@@ -690,28 +1072,72 @@ function BetEditor({
 function StatusRow({
   label,
   value,
-  canPress,
-  onPress,
+  status = 0,
+  frozen = false,
 }: {
   label: string
   value: string
-  canPress: boolean
-  onPress: () => void
+  status?: number
+  frozen?: boolean
 }) {
+  const tone =
+    status < 0
+      ? "bg-[var(--color-danger)]/10"
+      : status > 0
+        ? "bg-[var(--color-primary)]/10"
+        : "bg-[var(--color-surface-2)]"
   return (
-    <div className="flex items-center justify-between rounded-2xl bg-[var(--color-surface-2)] px-4 py-2.5">
+    <div className={`flex items-center justify-between rounded-xl px-3 py-2 transition-colors ${tone}`}>
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-        <p className="font-display text-lg tracking-tight">{value}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+        <p className="font-display text-base tracking-tight">{value}</p>
       </div>
-      {canPress && (
-        <button
-          onClick={onPress}
-          className="rounded-full bg-[var(--color-gold)] px-3 py-1.5 text-xs font-bold text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-95 hover:brightness-105"
+      {frozen ? (
+        <Badge
+          className="gap-1 bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]"
+          title="Match is mathematically decided"
         >
-          Press
-        </button>
-      )}
+          <Lock className="h-3 w-3" /> Frozen
+        </Badge>
+      ) : null}
+    </div>
+  )
+}
+
+// Hole-by-hole timeline: one colored box per hole played (from the viewer's perspective) —
+// green for a hole won, blue for a halved hole, red for a hole lost. Stops at the freeze point
+// since `holes` is already truncated there.
+function HoleTimeline({
+  holes,
+  teamSign,
+  className = "",
+}: {
+  holes: { hole: number; holeWinner: "A" | "B" | "halved" }[]
+  teamSign: number
+  className?: string
+}) {
+  if (holes.length === 0) return null
+  return (
+    <div className={`flex flex-wrap gap-1 ${className}`}>
+      {holes.map(({ hole, holeWinner }) => {
+        const outcome =
+          holeWinner === "halved" ? "push" : (holeWinner === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
+        const tone =
+          outcome === "won"
+            ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
+            : outcome === "push"
+              ? "bg-[var(--color-match-square)]/25 text-[var(--color-match-square)]"
+              : "bg-[var(--color-danger)]/20 text-[var(--color-danger)]"
+        return (
+          <span
+            key={hole}
+            title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
+            className={`flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular ${tone}`}
+          >
+            {hole + 1}
+          </span>
+        )
+      })}
     </div>
   )
 }
@@ -794,14 +1220,27 @@ function clone(s: Scores): Scores {
 
 // Start from the freshly-fetched server scores, but keep whatever the user currently has typed
 // (or is still saving) for any cell marked dirty, so a refetch mid-edit can't erase live input.
+//
+// A cell only leaves `dirty` once the server value we just received actually agrees with what's
+// on screen. We deliberately don't clear dirty as soon as our own save request resolves: a
+// background refresh that started fetching before that save finished can still land afterward
+// carrying pre-save data, and trusting "my save promise resolved" timing over "the data I just
+// received matches" is what let a stale refresh silently wipe out just-typed scores.
 function mergeScores(server: Scores, local: Scores, dirty: Set<string>): Scores {
   const out = clone(server)
   for (const key of dirty) {
     const [pidStr, holeStr] = key.split(":")
     const pid = Number(pidStr)
     const hole = Number(holeStr)
+    const localValue = local[pid]?.[hole] ?? null
+    const serverValue = out[pid]?.[hole] ?? null
+    if (serverValue === localValue) {
+      // The server has caught up to what's on screen; safe to stop overriding this cell.
+      dirty.delete(key)
+      continue
+    }
     if (!out[pid]) out[pid] = Array(18).fill(null)
-    out[pid][hole] = local[pid]?.[hole] ?? null
+    out[pid][hole] = localValue
   }
   return out
 }
