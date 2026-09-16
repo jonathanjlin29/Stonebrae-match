@@ -709,7 +709,7 @@ function MatchCard({
         </div>
       </div>
       {match.presses.length > 0 && (
-          <div className="mt-2.5 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+          <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
           {match.presses.map((p) => (
             <PressRow
               key={p.id}
