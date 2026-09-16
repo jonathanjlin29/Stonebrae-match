@@ -875,7 +875,7 @@ function PressRow({
       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
         <Swords className="h-3 w-3 shrink-0 text-[var(--color-gold)]" />
         <Badge className="bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]">Press</Badge>
-        <span className="text-[var(--color-muted)]">{scopeLabel} · from hole {press.startHole + 1}</span>
+          <span className="text-[var(--color-muted)]">{scopeLabel}</span>
         <div className="ml-auto flex items-center gap-1.5">
           <PressAmountEditor roundId={roundId} matchId={match.id} press={press} />
         </div>
