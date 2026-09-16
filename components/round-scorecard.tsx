@@ -641,9 +641,8 @@ function MatchCard({
       ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
       : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const canPressFront = isActive && !front.frozen && front.holes.length < 9
-  const canPressBack =
-    isActive && !back.frozen && back.holes.length < 9 && (front.holes.length === 9 || front.frozen)
+  const canPressFront = isActive && front.holes.length < 9
+  const canPressBack = isActive && back.holes.length < 9 && front.holes.length === 9
   const canPressOverall = isActive && overall.holes.length > 0 && overall.holes.length < 18 && !overall.frozen
   const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
   const canPressAny = currentNine != null || canPressOverall
