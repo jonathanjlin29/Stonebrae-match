@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown } from "lucide-react"
+  import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown, Bird } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
 import { saveScoreOffline, addPressOffline, completeRoundOffline, updatePressAmountOffline } from "@/lib/offline-actions"
 import { cachePage } from "@/lib/offline-store"
@@ -107,10 +107,7 @@ export function RoundScorecard({
   function fireCelebration(c: Omit<Celebration, "key">) {
     if (celebrationTimer.current) clearTimeout(celebrationTimer.current)
     setCelebration({ ...c, key: Date.now() })
-    // The birdie video runs a bit longer than the badge-style pop-ups; onEnded on the <video>
-    // will also clear it early once playback finishes, so this timeout is just a safety fallback.
-    const duration = c.type === "birdie" ? 4500 : 2400
-    celebrationTimer.current = setTimeout(() => setCelebration(null), duration)
+    celebrationTimer.current = setTimeout(() => setCelebration(null), 2000)
   }
 
   function dismissCelebration() {
@@ -160,11 +157,22 @@ export function RoundScorecard({
     })
   }
 
-  function pressScope(match: Match, scope: "front" | "back" | "overall", amount: number) {
+  function pressScope(
+    match: Match,
+    scope: "front" | "back" | "overall",
+    amount: number,
+  ): { ok: true } | { ok: false; reason: string } {
     const [start_, end] = scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
     const status = computeSegmentStatus(match, scores, players, start_, end)
-    if (status.holes.length === 0 || status.frozen || status.holes.length === end - start_ + 1) return
-    if (status.finalStatusA === 0) return
+    if (status.holes.length === 0) {
+      return { ok: false, reason: "No holes have been played on this nine yet." }
+    }
+    if (status.frozen || status.holes.length === end - start_ + 1) {
+      return { ok: false, reason: "This segment is already closed out — there are no holes left to press." }
+    }
+    if (status.finalStatusA === 0) {
+      return { ok: false, reason: "You can't press while the match is all square." }
+    }
     const initiatedBy = status.finalStatusA > 0 ? "B" : "A"
     const startHole = start_ + status.holes.length
     start(async () => {
@@ -182,6 +190,7 @@ export function RoundScorecard({
         )
       }
     })
+    return { ok: true }
   }
 
   function finish() {
@@ -606,12 +615,17 @@ function MatchCard({
   isActive: boolean
   isAdmin: boolean
   currentPlayerId: number | null
-  onPress: (match: Match, scope: "front" | "back" | "overall", amount: number) => void
+  onPress: (
+    match: Match,
+    scope: "front" | "back" | "overall",
+    amount: number,
+  ) => { ok: true } | { ok: false; reason: string }
   onBetsChanged: (matchId: number, nineBet: number, overallBet: number) => void
 }) {
   const [pressOpen, setPressOpen] = useState(false)
   const [pressChoice, setPressChoice] = useState<"nine" | "overall" | null>(null)
   const [pressAmount, setPressAmount] = useState("")
+  const [pressError, setPressError] = useState<string | null>(null)
 
   const byId = Object.fromEntries(players.map((p) => [p.id, p]))
   const teamAName = match.teamA.map((id) => shortLabel(byId[id])).join(" & ")
@@ -641,9 +655,9 @@ function MatchCard({
       ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
       : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const canPressFront = isActive && !front.frozen && front.holes.length < 9
+  const canPressFront = isActive && front.holes.length > 0 && front.holes.length < 9 && !front.frozen
   const canPressBack =
-    isActive && !back.frozen && back.holes.length < 9 && (front.holes.length === 9 || front.frozen)
+    isActive && back.holes.length > 0 && back.holes.length < 9 && front.holes.length === 9 && !back.frozen
   const canPressOverall = isActive && overall.holes.length > 0 && overall.holes.length < 18 && !overall.frozen
   const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
   const canPressAny = currentNine != null || canPressOverall
@@ -651,12 +665,14 @@ function MatchCard({
   function openPress(choice: "nine" | "overall") {
     setPressChoice(choice)
     setPressAmount(String(choice === "overall" ? match.overallBet : match.nineBet))
+    setPressError(null)
   }
 
   function closePress() {
     setPressOpen(false)
     setPressChoice(null)
     setPressAmount("")
+    setPressError(null)
   }
 
   function confirmPress() {
@@ -664,8 +680,12 @@ function MatchCard({
     const scope = pressChoice === "overall" ? "overall" : currentNine
     if (!scope) return
     const amount = Math.round(Math.max(0, Number(pressAmount) || 0))
-    onPress(match, scope, amount)
-    closePress()
+    const result = onPress(match, scope, amount)
+    if (result.ok) {
+      closePress()
+    } else {
+      setPressError(result.reason)
+    }
   }
 
   return (
@@ -710,7 +730,7 @@ function MatchCard({
         </div>
       </div>
       {match.presses.length > 0 && (
-        <div className="mt-2.5 grid gap-1.5">
+          <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
           {match.presses.map((p) => (
             <PressRow
               key={p.id}
@@ -759,30 +779,37 @@ function MatchCard({
               </button>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold">
-                Press {pressChoice === "overall" ? "Overall" : `${currentNine === "front" ? "Front" : "Back"} Nine`} for
-              </span>
-              <span className="text-[var(--color-muted)]">$</span>
-              <input
-                type="number"
-                autoFocus
-                value={pressAmount}
-                onChange={(e) => setPressAmount(e.target.value)}
-                className="h-9 w-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
-              />
-              <button
-                onClick={confirmPress}
-                className="rounded-full bg-[var(--color-gold)] px-4 py-2 text-sm font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
-              >
-                Confirm
-              </button>
-              <button
-                onClick={closePress}
-                className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
-              >
-                Cancel
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold">
+                  Press {pressChoice === "overall" ? "Overall" : `${currentNine === "front" ? "Front" : "Back"} Nine`} for
+                </span>
+                <span className="text-[var(--color-muted)]">$</span>
+                <input
+                  type="number"
+                  autoFocus
+                  value={pressAmount}
+                  onChange={(e) => setPressAmount(e.target.value)}
+                  className="h-9 w-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+                />
+                <button
+                  onClick={confirmPress}
+                  className="rounded-full bg-[var(--color-gold)] px-4 py-2 text-sm font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
+                >
+                  Confirm
+                </button>
+                <button
+                  onClick={closePress}
+                  className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+                >
+                  Cancel
+                </button>
+              </div>
+              {pressError && (
+                <p className="text-sm font-medium text-[var(--color-danger)]" role="alert">
+                  {pressError}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -876,7 +903,7 @@ function PressRow({
       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
         <Swords className="h-3 w-3 shrink-0 text-[var(--color-gold)]" />
         <Badge className="bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]">Press</Badge>
-        <span className="text-[var(--color-muted)]">{scopeLabel} · from hole {press.startHole + 1}</span>
+          <span className="text-[var(--color-muted)]">{scopeLabel}</span>
         <div className="ml-auto flex items-center gap-1.5">
           <PressAmountEditor roundId={roundId} matchId={match.id} press={press} />
         </div>
@@ -1151,61 +1178,33 @@ function CelebrationOverlay({
 }) {
   if (!celebration) return null
 
-  if (celebration.type === "birdie") {
-    return (
-      <div
-        className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-        key={celebration.key}
-      >
-        <div className="animate-pop flex flex-col items-center gap-3">
-          <video
-            src="/videos/birdie-bomb.mp4"
-            autoPlay
-            muted
-            playsInline
-            onEnded={onDismiss}
-            className="h-72 w-72 rounded-[28px] object-cover shadow-2xl ring-1 ring-[var(--color-primary)]/40 sm:h-96 sm:w-96"
-          />
-          <p className="font-display text-2xl text-white drop-shadow-lg">{celebration.name} · Birdie!</p>
-        </div>
-      </div>
-    )
-  }
-
   const isFire = celebration.type === "fire"
+  const isBirdie = celebration.type === "birdie"
+  const accent = isFire
+    ? "var(--color-danger)"
+    : isBirdie
+      ? "var(--color-gold)"
+      : "var(--color-primary)"
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-6 z-50 flex justify-center" key={celebration.key}>
-      <div className="relative">
-        {isFire &&
-          Array.from({ length: 14 }).map((_, i) => (
-            <span
-              key={i}
-              className="animate-confetti absolute top-0 h-2 w-2 rounded-sm"
-              style={{
-                left: `${(i / 14) * 100}%`,
-                backgroundColor: i % 3 === 0 ? "var(--color-gold)" : i % 3 === 1 ? "var(--color-primary)" : "var(--color-danger)",
-                animationDelay: `${i * 40}ms`,
-              }}
-            />
-          ))}
-        <div
-          className={`glass animate-rise flex items-center gap-3 rounded-[28px] px-6 py-4 shadow-2xl ${
-            isFire ? "ring-1 ring-[var(--color-danger)]/40" : "ring-1 ring-[var(--color-primary)]/40"
-          }`}
-        >
-          <span className="animate-pop">
-            {isFire ? (
-              <Flame className="h-8 w-8 animate-flame text-[var(--color-danger)]" />
-            ) : (
-              <TrendingUp className="h-8 w-8 text-[var(--color-primary)]" />
-            )}
-          </span>
-          <div>
-            <p className="font-display text-2xl leading-none">{celebration.name}</p>
-            <p className={`text-sm font-semibold ${isFire ? "text-[var(--color-danger)]" : "text-[var(--color-primary)]"}`}>
-              {celebration.detail}
-            </p>
-          </div>
+    <div className="pointer-events-none fixed inset-x-0 top-6 z-50 flex justify-center px-4" key={celebration.key}>
+      <div
+        className="glass animate-rise flex items-center gap-2.5 rounded-2xl px-4 py-2.5 shadow-xl ring-1"
+        style={{ ["--tw-ring-color" as string]: `color-mix(in srgb, ${accent} 40%, transparent)` }}
+      >
+        <span className="animate-pop">
+          {isFire ? (
+            <Flame className="h-5 w-5 animate-flame text-[var(--color-danger)]" />
+          ) : isBirdie ? (
+            <Bird className="h-5 w-5 text-[var(--color-gold)]" />
+          ) : (
+            <TrendingUp className="h-5 w-5 text-[var(--color-primary)]" />
+          )}
+        </span>
+        <div className="leading-tight">
+          <p className="font-display text-base leading-none">{celebration.name}</p>
+          <p className="text-xs font-semibold" style={{ color: accent }}>
+            {celebration.detail}
+          </p>
         </div>
       </div>
     </div>
