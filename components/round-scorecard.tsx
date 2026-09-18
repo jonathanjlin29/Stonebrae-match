@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown } from "lucide-react"
+  import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown, Bird } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
 import { saveScoreOffline, addPressOffline, completeRoundOffline, updatePressAmountOffline } from "@/lib/offline-actions"
 import { cachePage } from "@/lib/offline-store"
@@ -107,10 +107,7 @@ export function RoundScorecard({
   function fireCelebration(c: Omit<Celebration, "key">) {
     if (celebrationTimer.current) clearTimeout(celebrationTimer.current)
     setCelebration({ ...c, key: Date.now() })
-    // The birdie video runs a bit longer than the badge-style pop-ups; onEnded on the <video>
-    // will also clear it early once playback finishes, so this timeout is just a safety fallback.
-    const duration = c.type === "birdie" ? 4500 : 2400
-    celebrationTimer.current = setTimeout(() => setCelebration(null), duration)
+    celebrationTimer.current = setTimeout(() => setCelebration(null), 2000)
   }
 
   function dismissCelebration() {
@@ -1181,61 +1178,33 @@ function CelebrationOverlay({
 }) {
   if (!celebration) return null
 
-  if (celebration.type === "birdie") {
-    return (
-      <div
-        className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-        key={celebration.key}
-      >
-        <div className="animate-pop flex flex-col items-center gap-3">
-          <video
-            src="/videos/birdie-bomb.mp4"
-            autoPlay
-            muted
-            playsInline
-            onEnded={onDismiss}
-            className="h-72 w-72 rounded-[28px] object-cover shadow-2xl ring-1 ring-[var(--color-primary)]/40 sm:h-96 sm:w-96"
-          />
-          <p className="font-display text-2xl text-white drop-shadow-lg">{celebration.name} · Birdie!</p>
-        </div>
-      </div>
-    )
-  }
-
   const isFire = celebration.type === "fire"
+  const isBirdie = celebration.type === "birdie"
+  const accent = isFire
+    ? "var(--color-danger)"
+    : isBirdie
+      ? "var(--color-gold)"
+      : "var(--color-primary)"
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-6 z-50 flex justify-center" key={celebration.key}>
-      <div className="relative">
-        {isFire &&
-          Array.from({ length: 14 }).map((_, i) => (
-            <span
-              key={i}
-              className="animate-confetti absolute top-0 h-2 w-2 rounded-sm"
-              style={{
-                left: `${(i / 14) * 100}%`,
-                backgroundColor: i % 3 === 0 ? "var(--color-gold)" : i % 3 === 1 ? "var(--color-primary)" : "var(--color-danger)",
-                animationDelay: `${i * 40}ms`,
-              }}
-            />
-          ))}
-        <div
-          className={`glass animate-rise flex items-center gap-3 rounded-[28px] px-6 py-4 shadow-2xl ${
-            isFire ? "ring-1 ring-[var(--color-danger)]/40" : "ring-1 ring-[var(--color-primary)]/40"
-          }`}
-        >
-          <span className="animate-pop">
-            {isFire ? (
-              <Flame className="h-8 w-8 animate-flame text-[var(--color-danger)]" />
-            ) : (
-              <TrendingUp className="h-8 w-8 text-[var(--color-primary)]" />
-            )}
-          </span>
-          <div>
-            <p className="font-display text-2xl leading-none">{celebration.name}</p>
-            <p className={`text-sm font-semibold ${isFire ? "text-[var(--color-danger)]" : "text-[var(--color-primary)]"}`}>
-              {celebration.detail}
-            </p>
-          </div>
+    <div className="pointer-events-none fixed inset-x-0 top-6 z-50 flex justify-center px-4" key={celebration.key}>
+      <div
+        className="glass animate-rise flex items-center gap-2.5 rounded-2xl px-4 py-2.5 shadow-xl ring-1"
+        style={{ ["--tw-ring-color" as string]: `color-mix(in srgb, ${accent} 40%, transparent)` }}
+      >
+        <span className="animate-pop">
+          {isFire ? (
+            <Flame className="h-5 w-5 animate-flame text-[var(--color-danger)]" />
+          ) : isBirdie ? (
+            <Bird className="h-5 w-5 text-[var(--color-gold)]" />
+          ) : (
+            <TrendingUp className="h-5 w-5 text-[var(--color-primary)]" />
+          )}
+        </span>
+        <div className="leading-tight">
+          <p className="font-display text-base leading-none">{celebration.name}</p>
+          <p className="text-xs font-semibold" style={{ color: accent }}>
+            {celebration.detail}
+          </p>
         </div>
       </div>
     </div>
