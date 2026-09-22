@@ -2,12 +2,7 @@
 
 import { useEffect, useRef } from "react"
 
-const SPRITES = [
-  { src: "/space-golf/ball-white.png", weight: 5 },
-  { src: "/space-golf/ball-gold.png", weight: 2 },
-  { src: "/space-golf/tee-wood.png", weight: 2 },
-  { src: "/space-golf/tee-red.png", weight: 1 },
-]
+const SPRITES = [{ src: "/space-golf/golfball.png", weight: 1 }]
 
 type Particle = {
   img: HTMLImageElement
