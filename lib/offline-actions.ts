@@ -2,7 +2,7 @@
 
 import { addPress, completeRound, createRound, saveScore, updatePressAmount } from "@/app/actions/rounds"
 import { createPlayer } from "@/app/actions/players"
-import { COURSE } from "@/lib/course"
+import { COURSE, STONEBRAE_ID, type SavedCourse } from "@/lib/course"
 import { cachePage, enqueueMutation, replayQueuedMutations, resolveId, setActiveOfflineRound } from "@/lib/offline-store"
 import type { Match, Player, Round, RoundPlayer, Scores } from "@/lib/types"
 
@@ -44,8 +44,10 @@ export async function createRoundOffline(input: {
   matches: MatchConfig[]
   roster: Player[]
   currentPlayerId: number | null
+  course?: SavedCourse
 }): Promise<{ ok: true; roundId: number } | { ok: false; error: string }> {
-  const payload = { playerIds: input.playerIds, handicaps: input.handicaps, matches: input.matches }
+  const course = input.course ?? { id: STONEBRAE_ID, ...COURSE, builtIn: true }
+  const payload = { playerIds: input.playerIds, handicaps: input.handicaps, matches: input.matches, courseId: course.id }
   if (navigator.onLine) return createRound(payload)
   if (input.playerIds.length < 2) return { ok: false, error: "Add at least two players." }
 
@@ -80,8 +82,8 @@ export async function createRoundOffline(input: {
   }))
   const round: Round = {
     id: tempId,
-    courseName: COURSE.name,
-    holes: COURSE.holes,
+    courseName: course.name,
+    holes: course.holes,
     status: "active",
     createdBy: input.currentPlayerId,
     createdAt: new Date().toISOString(),

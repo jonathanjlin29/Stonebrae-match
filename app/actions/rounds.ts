@@ -7,6 +7,7 @@ import { getCurrentPlayerId, getIsAdmin } from "@/lib/session"
 import type { Match, Player, Round, RoundPlayer, Scores } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 import { getPlayers } from "./players"
+import { getCourseHoles } from "./courses"
 
 type MatchConfig = {
   type: "singles" | "team"
@@ -20,13 +21,15 @@ export async function createRound(input: {
   playerIds: number[]
   handicaps: Record<number, number>
   matches: MatchConfig[]
+  courseId?: string
 }): Promise<{ ok: true; roundId: number } | { ok: false; error: string }> {
   const createdBy = await getCurrentPlayerId()
   if (input.playerIds.length < 2) return { ok: false, error: "Add at least two players." }
 
+  const course = await getCourseHoles(input.courseId)
   const roundRows = await sql`
     INSERT INTO rounds (course_name, course, status, created_by)
-    VALUES (${COURSE.name}, ${JSON.stringify(COURSE.holes)}, 'active', ${createdBy})
+    VALUES (${course.name}, ${JSON.stringify(course.holes)}, 'active', ${createdBy})
     RETURNING id`
   const roundId = roundRows[0].id as number
 

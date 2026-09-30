@@ -18,7 +18,7 @@ import {
   getStrokesGiven,
 } from "@/lib/nassau"
 import { computeSettlement } from "@/lib/settlement"
-import { COURSE } from "@/lib/course"
+import { COURSE, type Hole } from "@/lib/course"
 import type { Match, Press, Round, Scores } from "@/lib/types"
 import { formatMoney, moneyClass, shortLabel } from "@/lib/util"
 import { Button, Card, Badge, PlayerAvatar, SegmentedControl } from "./ui"
@@ -61,6 +61,7 @@ export function RoundScorecard({
     photoUrl: p.photoUrl,
     handicap: p.roundHandicap,
   }))
+  const courseHoles: Hole[] = round.holes?.length === 18 ? round.holes : COURSE.holes
   const lowestHandicap = players.length > 0 ? Math.min(...players.map((p) => p.handicap)) : 0
   const isActive = round.status === "active"
   const canEditScores = !isPublicView && (isActive || isAdmin)
@@ -98,11 +99,11 @@ export function RoundScorecard({
     const t: Record<number, number> = {}
     for (const p of players) t[p.id] = 0
     for (const m of matches) {
-      const { money } = computeMatchMoney(m, scores, players)
+      const { money } = computeMatchMoney(m, scores, players, courseHoles)
       for (const [id, amt] of Object.entries(money)) t[Number(id)] = (t[Number(id)] ?? 0) + amt
     }
     return t
-  }, [matches, scores, players])
+  }, [matches, scores, players, courseHoles])
 
   function fireCelebration(c: Omit<Celebration, "key">) {
     if (celebrationTimer.current) clearTimeout(celebrationTimer.current)
@@ -125,17 +126,17 @@ export function RoundScorecard({
       if (value != null) {
         const holes = next[playerId]
         const player = players.find((p) => p.id === playerId)
-        if (isBounceBack(holes, hole) && player) {
+        if (isBounceBack(holes, hole, courseHoles) && player) {
           fireCelebration({ type: "bounce", name: shortLabel(player), detail: "Bounce Back" })
         } else {
-          const streak = birdieStreakEndingAt(holes, hole)
+          const streak = birdieStreakEndingAt(holes, hole, courseHoles)
           if (streak >= 2 && player) {
             fireCelebration({ type: "fire", name: shortLabel(player), detail: `Fire Hot · ${streak} in a row` })
           } else if (
             player &&
             currentPlayerId != null &&
             playerId === currentPlayerId &&
-            relToPar(value, COURSE.holes[hole].par) === "birdie"
+            relToPar(value, courseHoles[hole].par) === "birdie"
           ) {
             fireCelebration({ type: "birdie", name: shortLabel(player), detail: "Birdie!" })
           }
@@ -163,7 +164,7 @@ export function RoundScorecard({
     amount: number,
   ): { ok: true } | { ok: false; reason: string } {
     const [start_, end] = scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
-    const status = computeSegmentStatus(match, scores, players, start_, end)
+    const status = computeSegmentStatus(match, scores, players, start_, end, courseHoles)
     if (status.holes.length === 0) {
       return { ok: false, reason: "No holes have been played on this nine yet." }
     }
@@ -223,7 +224,12 @@ export function RoundScorecard({
       <CelebrationOverlay celebration={celebration} onDismiss={dismissCelebration} />
 
       <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Match Scorecard</h1>
+        <div className="flex flex-col gap-1">
+          <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Match Scorecard</h1>
+          {round.courseName ? (
+            <p className="text-sm text-[var(--color-muted)]">{round.courseName}</p>
+          ) : null}
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={manualRefresh}
@@ -297,7 +303,7 @@ export function RoundScorecard({
       </div>
 
       <section className={`mb-6 ${tab === "money" ? "" : "hidden"}`}>
-        <MoneyTab matches={matches} scores={scores} players={players} totals={totals} />
+        <MoneyTab matches={matches} scores={scores} players={players} totals={totals} courseHoles={courseHoles} />
       </section>
 
       <section className={`mb-6 grid gap-3 ${tab === "matches" ? "" : "hidden"}`}>
@@ -308,6 +314,7 @@ export function RoundScorecard({
             match={m}
             scores={scores}
             players={players}
+            courseHoles={courseHoles}
             isActive={isActive}
             isAdmin={isAdmin}
             currentPlayerId={currentPlayerId}
@@ -326,7 +333,7 @@ export function RoundScorecard({
               <th className="sticky left-0 z-10 bg-[var(--color-surface)] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">
                 Player
               </th>
-              {COURSE.holes.map((h) => (
+              {courseHoles.map((h) => (
                 <th key={h.hole} className="px-1.5 py-3 text-center font-medium tabular">
                   <div>{h.hole}</div>
                   <div className="text-[10px] opacity-70">Par {h.par}</div>
@@ -353,7 +360,7 @@ export function RoundScorecard({
                     </div>
                   </td>
                   {holes.map((v: number | null, h: number) => {
-                    const rel = relToPar(v, COURSE.holes[h].par)
+                    const rel = relToPar(v, courseHoles[h].par)
                     const relClass =
                       rel === "eagle"
                         ? "text-[var(--color-gold)]"
@@ -367,9 +374,9 @@ export function RoundScorecard({
                     return (
                       <td key={h} className="px-1 py-1.5 text-center">
                         <div className="relative inline-flex items-center justify-center">
-                          {getStrokesGiven(p.handicap, lowestHandicap, COURSE.holes[h].hcp) > 0 ? (
+                          {getStrokesGiven(p.handicap, lowestHandicap, courseHoles[h].hcp) > 0 ? (
                             <span
-                              aria-label={`${shortLabel(p)} gets a stroke on hole ${COURSE.holes[h].hole}`}
+                              aria-label={`${shortLabel(p)} gets a stroke on hole ${courseHoles[h].hole}`}
                               title="Stroke received"
                               className="absolute -right-0.5 -top-0.5 z-10 h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]"
                             />
@@ -423,7 +430,7 @@ export function RoundScorecard({
               </div>
             ))}
 
-            {COURSE.holes.map((h, hIdx) => (
+            {courseHoles.map((h, hIdx) => (
               <Fragment key={h.hole}>
                 <div className="flex flex-col items-center justify-center border-b border-[var(--color-border)] px-1 py-1.5 text-[var(--color-muted)]">
                   <span className="font-display text-sm leading-none text-[var(--color-foreground)]">{h.hole}</span>
@@ -602,6 +609,7 @@ function MatchCard({
   match,
   scores,
   players,
+  courseHoles,
   isActive,
   isAdmin,
   currentPlayerId,
@@ -612,6 +620,7 @@ function MatchCard({
   match: Match
   scores: Scores
   players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
+  courseHoles: Hole[]
   isActive: boolean
   isAdmin: boolean
   currentPlayerId: number | null
@@ -633,9 +642,9 @@ function MatchCard({
   const teamAPlayers = match.teamA.map((id) => byId[id]).filter(Boolean)
   const teamBPlayers = match.teamB.map((id) => byId[id]).filter(Boolean)
 
-  const front = computeSegmentStatus(match, scores, players, 0, 8)
-  const back = computeSegmentStatus(match, scores, players, 9, 17)
-  const overall = computeSegmentStatus(match, scores, players, 0, 17)
+  const front = computeSegmentStatus(match, scores, players, 0, 8, courseHoles)
+  const back = computeSegmentStatus(match, scores, players, 9, 17, courseHoles)
+  const overall = computeSegmentStatus(match, scores, players, 0, 17, courseHoles)
 
   const frontLabel = front.holes.length ? (front.frozen ? front.closeoutLabel! : getMatchStatusLabel(front.finalStatusA)) : "Not started"
   const backLabel = back.holes.length ? (back.frozen ? back.closeoutLabel! : getMatchStatusLabel(back.finalStatusA)) : "Not started"
@@ -739,6 +748,7 @@ function MatchCard({
               match={match}
               scores={scores}
               players={players}
+              courseHoles={courseHoles}
               currentPlayerId={currentPlayerId}
             />
           ))}
@@ -870,6 +880,7 @@ function PressRow({
   match,
   scores,
   players,
+  courseHoles,
   currentPlayerId,
 }: {
   roundId: number
@@ -877,10 +888,11 @@ function PressRow({
   match: Match
   scores: Scores
   players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
+  courseHoles: Hole[]
   currentPlayerId: number | null
 }) {
   const end = press.scope === "front" ? 8 : 17
-  const status = computeSegmentStatus(match, scores, players, press.startHole, end)
+  const status = computeSegmentStatus(match, scores, players, press.startHole, end, courseHoles)
   const label = status.holes.length
     ? status.frozen
       ? status.closeoutLabel!
@@ -968,11 +980,13 @@ function MoneyTab({
   scores,
   players,
   totals,
+  courseHoles,
 }: {
   matches: Match[]
   scores: Scores
   players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
   totals: Record<number, number>
+  courseHoles: Hole[]
 }) {
   const byId = Object.fromEntries(players.map((p) => [p.id, p]))
   const sortedPlayers = [...players].sort((a, b) => (totals[b.id] ?? 0) - (totals[a.id] ?? 0))
@@ -1025,7 +1039,7 @@ function MoneyTab({
           {matches.map((m) => {
             const teamAName = m.teamA.map((id) => shortLabel(byId[id])).join(" & ")
             const teamBName = m.teamB.map((id) => shortLabel(byId[id])).join(" & ")
-            const { results } = computeMatchMoney(m, scores, players)
+            const { results } = computeMatchMoney(m, scores, players, courseHoles)
             const segments: { label: string; winner: "A" | "B" | "halved" | null; amount: number }[] = [
               { label: "Front", winner: results.front, amount: m.nineBet },
               { label: "Back", winner: results.back, amount: m.nineBet },

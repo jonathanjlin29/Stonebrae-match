@@ -1,5 +1,8 @@
 export type Hole = { hole: number; par: number; hcp: number; yards: number }
 export type Course = { name: string; holes: Hole[] }
+export type SavedCourse = Course & { id: string; builtIn: boolean }
+
+export const STONEBRAE_ID = "stonebrae"
 
 export const COURSE: Course = {
   name: "Stonebrae — Black Tees",

@@ -5,6 +5,8 @@ import { useMemo, useState, useTransition } from "react"
 import { Check, Plus, Minus, Users, User, ArrowRight, ArrowLeft, X } from "lucide-react"
 import { createPlayerOffline, createRoundOffline } from "@/lib/offline-actions"
 import type { Player } from "@/lib/types"
+import type { SavedCourse } from "@/lib/course"
+import { CourseStep } from "./course-step"
 import { playerLabel, shortLabel } from "@/lib/util"
 import { Button, Card, PlayerAvatar, SegmentedControl } from "./ui"
 
@@ -16,10 +18,19 @@ type MatchDraft = {
   overallBet: number
 }
 
-export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; currentPlayer: Player }) {
+export function NewRoundWizard({
+  players,
+  currentPlayer,
+  courses,
+}: {
+  players: Player[]
+  currentPlayer: Player
+  courses: SavedCourse[]
+}) {
   const router = useRouter()
   const [pending, start] = useTransition()
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(0)
+  const [course, setCourse] = useState<SavedCourse>(courses[0])
   const [addedPlayers, setAddedPlayers] = useState<Player[]>([])
   const roster = useMemo(() => [...players, ...addedPlayers.filter((added) => !players.some((player) => player.id === added.id))], [players, addedPlayers])
   const [selected, setSelected] = useState<number[]>([currentPlayer.id])
@@ -127,6 +138,7 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
         matches,
         roster,
         currentPlayerId: currentPlayer.id,
+        course,
       })
       if (!res.ok) {
         setError(res.error)
@@ -146,10 +158,16 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-7 flex items-center gap-2">
-        <StepDot n={1} active={step === 1} done={step > 1} label="Players" />
+        <StepDot n={1} active={step === 0} done={step > 0} label="Course" />
         <div className="h-px flex-1 bg-[var(--color-border)]" />
-        <StepDot n={2} active={step === 2} done={false} label="Matches" />
+        <StepDot n={2} active={step === 1} done={step > 1} label="Players" />
+        <div className="h-px flex-1 bg-[var(--color-border)]" />
+        <StepDot n={3} active={step === 2} done={false} label="Matches" />
       </div>
+
+      {step === 0 && (
+        <CourseStep courses={courses} selectedId={course.id} onSelect={setCourse} onContinue={() => setStep(1)} />
+      )}
 
       {step === 1 && (
         <div>
@@ -230,9 +248,14 @@ export function NewRoundWizard({ players, currentPlayer }: { players: Player[]; 
           </Card>
 
           {error && <p className="mb-3 text-sm text-[var(--color-danger)]">{error}</p>}
-          <Button size="lg" className="w-full" onClick={goToMatches}>
-            Next: set up matches <ArrowRight className="h-5 w-5" />
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setStep(0)}>
+              <ArrowLeft className="h-4 w-4" /> Back
+            </Button>
+            <Button size="lg" className="flex-1" onClick={goToMatches}>
+              Next: set up matches <ArrowRight className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
       )}
 

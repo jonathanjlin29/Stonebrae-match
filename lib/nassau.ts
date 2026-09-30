@@ -1,5 +1,10 @@
-import { COURSE } from "./course"
+import { COURSE, type Hole } from "./course"
 import type { Match, Player, Scores } from "./types"
+
+// Rounds store their own course holes; older rounds without them fall back to Stonebrae.
+function holesOrDefault(holes?: Hole[] | null): Hole[] {
+  return holes && holes.length === 18 ? holes : COURSE.holes
+}
 
 // ─── HANDICAP HELPERS ──────────────────────────────────────────────
 export function getStrokesGiven(playerHcp: number, lowestHcp: number, holeHcp: number): number {
@@ -25,7 +30,9 @@ export function computeMatchStatus(
   players: Player[],
   start = 0,
   end = 17,
+  courseHoles?: Hole[] | null,
 ): { hole: number; holeWinner: "A" | "B" | "halved"; statusA: number }[] {
+  const courseData = holesOrDefault(courseHoles)
   const map = toPlayerMap(players)
   const all = [...match.teamA, ...match.teamB]
   if (all.some((id) => !map[id])) return []
@@ -37,8 +44,7 @@ export function computeMatchStatus(
   for (let h = start; h <= end; h++) {
     const entered = all.every((id) => scores[id] && scores[id][h] != null)
     if (!entered) continue
-    const hole = COURSE.holes[h]
-    const holeHcp = hole.hcp
+    const holeHcp = courseData[h].hcp
     let netA: number
     let netB: number
 
@@ -96,8 +102,9 @@ export function computeSegmentStatus(
   players: Player[],
   start: number,
   end: number,
+  courseHoles?: Hole[] | null,
 ): SegmentStatus {
-  const raw = computeMatchStatus(match, scores, players, start, end)
+  const raw = computeMatchStatus(match, scores, players, start, end, courseHoles)
   const totalHoles = end - start + 1
   const holes: SegmentStatus["holes"] = []
   let frozen = false
@@ -120,8 +127,15 @@ export function computeSegmentStatus(
   return { holes, finalStatusA, frozen, frozenAtHole, closeoutLabel }
 }
 
-function segmentWinner(match: Match, scores: Scores, players: Player[], start: number, end: number): "A" | "B" | "halved" | null {
-  const status = computeSegmentStatus(match, scores, players, start, end)
+function segmentWinner(
+  match: Match,
+  scores: Scores,
+  players: Player[],
+  start: number,
+  end: number,
+  courseHoles?: Hole[] | null,
+): "A" | "B" | "halved" | null {
+  const status = computeSegmentStatus(match, scores, players, start, end, courseHoles)
   if (status.holes.length === 0) return null
   if (status.finalStatusA > 0) return "A"
   if (status.finalStatusA < 0) return "B"
@@ -145,7 +159,7 @@ export function splitInteger(amount: number, n: number): number[] {
 // own hole range. Winning team collectively wins the bet, split evenly; losing
 // team splits the loss. All splits use whole dollars so every player's money is
 // an integer and each segment nets to exactly zero across both teams.
-export function computeMatchMoney(match: Match, scores: Scores, players: Player[]) {
+export function computeMatchMoney(match: Match, scores: Scores, players: Player[], courseHoles?: Hole[] | null) {
   const money: Record<number, number> = {}
   for (const id of [...match.teamA, ...match.teamB]) money[id] = 0
 
@@ -159,9 +173,9 @@ export function computeMatchMoney(match: Match, scores: Scores, players: Player[
     losers.forEach((id, i) => (money[id] -= loseShares[i]))
   }
 
-  const front = segmentWinner(match, scores, players, 0, 8)
-  const back = segmentWinner(match, scores, players, 9, 17)
-  const overall = segmentWinner(match, scores, players, 0, 17)
+  const front = segmentWinner(match, scores, players, 0, 8, courseHoles)
+  const back = segmentWinner(match, scores, players, 9, 17, courseHoles)
+  const overall = segmentWinner(match, scores, players, 0, 17, courseHoles)
   applySegment(front, match.nineBet)
   applySegment(back, match.nineBet)
   applySegment(overall, match.overallBet)
@@ -169,7 +183,7 @@ export function computeMatchMoney(match: Match, scores: Scores, players: Player[
   const pressResults: Record<string, "A" | "B" | "halved" | null> = {}
   for (const press of match.presses ?? []) {
     const end = press.scope === "front" ? 8 : 17
-    const w = segmentWinner(match, scores, players, press.startHole, end)
+    const w = segmentWinner(match, scores, players, press.startHole, end, courseHoles)
     pressResults[press.id] = w
     const defaultAmount = press.scope === "overall" ? match.overallBet : match.nineBet
     applySegment(w, press.amount ?? defaultAmount)
@@ -192,23 +206,25 @@ export function relToPar(strokes: number | null, par: number): Rel {
 }
 
 // A "bounce back": par or better immediately after a bogey or worse.
-export function isBounceBack(holeScores: (number | null)[], holeIndex: number): boolean {
+export function isBounceBack(holeScores: (number | null)[], holeIndex: number, courseHoles?: Hole[] | null): boolean {
   if (holeIndex <= 0) return false
   const prev = holeScores[holeIndex - 1]
   const cur = holeScores[holeIndex]
   if (prev == null || cur == null) return false
-  const prevPar = COURSE.holes[holeIndex - 1].par
-  const curPar = COURSE.holes[holeIndex].par
+  const courseData = holesOrDefault(courseHoles)
+  const prevPar = courseData[holeIndex - 1].par
+  const curPar = courseData[holeIndex].par
   return prev - prevPar >= 1 && cur - curPar <= 0
 }
 
 // Current consecutive-birdie (or better) streak ending at holeIndex.
-export function birdieStreakEndingAt(holeScores: (number | null)[], holeIndex: number): number {
+export function birdieStreakEndingAt(holeScores: (number | null)[], holeIndex: number, courseHoles?: Hole[] | null): number {
+  const courseData = holesOrDefault(courseHoles)
   let streak = 0
   for (let h = holeIndex; h >= 0; h--) {
     const s = holeScores[h]
     if (s == null) break
-    if (s - COURSE.holes[h].par <= -1) streak++
+    if (s - courseData[h].par <= -1) streak++
     else break
   }
   return streak
