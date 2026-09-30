@@ -143,6 +143,70 @@ body {
   transform: translateY(-1px);
 }
 
+/* App-wide liquid backdrop: slow-moving blurred color fields for glass surfaces to refract. */
+.liquid-bg {
+  background: var(--color-background);
+}
+.liquid-bg-field {
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.dark .liquid-bg-field {
+  opacity: 0.35;
+}
+.liquid-bg-field-a {
+  top: -25vmax;
+  left: -20vmax;
+  background: var(--color-primary);
+  animation: liquid-drift-a 38s ease-in-out infinite alternate;
+}
+.liquid-bg-field-b {
+  bottom: -30vmax;
+  right: -25vmax;
+  background: var(--color-match-square);
+  animation: liquid-drift-b 46s ease-in-out infinite alternate;
+}
+.liquid-bg-field-c {
+  top: 35%;
+  left: 40%;
+  width: 45vmax;
+  height: 45vmax;
+  background: var(--color-gold);
+  opacity: 0.25;
+  animation: liquid-drift-c 52s ease-in-out infinite alternate;
+}
+.dark .liquid-bg-field-c {
+  opacity: 0.16;
+}
+.liquid-bg-sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--color-foreground) 6%, transparent) 0%,
+    transparent 35%,
+    transparent 65%,
+    color-mix(in srgb, var(--color-background) 60%, transparent) 100%
+  );
+}
+@keyframes liquid-drift-a {
+  to { transform: translate(18vw, 14vh) scale(1.15); }
+}
+@keyframes liquid-drift-b {
+  to { transform: translate(-16vw, -18vh) scale(1.1); }
+}
+@keyframes liquid-drift-c {
+  to { transform: translate(-22vw, 10vh) scale(0.85); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .liquid-bg-field { animation: none; }
+}
+
 /* iOS-style grouped list row separators (inset, not full-bleed). */
 .ios-list > * + * {
   border-top: 1px solid var(--color-border);
