@@ -5,7 +5,7 @@ import type { ComponentProps } from "react"
 export function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={clsx("card-shadow rounded-[var(--radius)] bg-[var(--color-surface)]", className)}
+      className={clsx("liquid-glass rounded-[var(--radius)]", className)}
       {...props}
     />
   )
@@ -15,12 +15,11 @@ const buttonBase =
   "inline-flex items-center justify-center gap-2 rounded-full font-semibold tracking-tight transition-all active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-background)] disabled:opacity-40 disabled:pointer-events-none"
 
 const variants = {
-  primary: "bg-[var(--color-primary)] text-[var(--color-primary-foreground)] shadow-[0_8px_20px_-6px_hsl(150_70%_40%/0.5)] hover:brightness-105",
-  outline:
-    "bg-[var(--color-surface-2)] text-[var(--color-foreground)] hover:bg-[var(--color-border)]",
+  primary: "liquid-glass-tint [--tint:var(--color-primary)] text-[var(--color-primary-foreground)]",
+  outline: "liquid-glass-item text-[var(--color-foreground)]",
   ghost: "bg-transparent text-[var(--color-muted)] hover:text-[var(--color-foreground)] hover:bg-[var(--color-surface-2)]",
-  danger: "bg-[var(--color-danger)] text-white shadow-[0_8px_20px_-6px_hsl(6_90%_55%/0.5)] hover:brightness-105",
-  gold: "bg-[var(--color-gold)] text-[#1a1204] shadow-[0_8px_20px_-6px_hsl(45_90%_50%/0.5)] hover:brightness-105",
+  danger: "liquid-glass-tint [--tint:var(--color-danger)] text-white",
+  gold: "liquid-glass-tint [--tint:var(--color-gold)] text-[#1a1204]",
 }
 
 const sizes = {
@@ -58,7 +57,7 @@ export function Badge({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded-full bg-[var(--color-surface-2)] px-3 py-1 text-xs font-semibold",
+        "liquid-glass-item inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold",
         className,
       )}
       {...props}

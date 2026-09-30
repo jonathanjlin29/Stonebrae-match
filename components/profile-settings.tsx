@@ -49,7 +49,7 @@ function ProfileDialog({ player, onClose, onSaved }: { player: Player; onClose: 
   }, [])
   return (
     <dialog ref={dialog} aria-labelledby="profile-title" aria-describedby="profile-description" onCancel={(event) => { event.preventDefault(); if (!saving) onClose() }}
-      className="m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-md overflow-y-auto rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] p-0 text-[var(--color-foreground)] shadow-2xl backdrop:bg-[var(--color-background)]/80 backdrop:backdrop-blur-sm">
+      className="liquid-glass fixed m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-md overflow-y-auto rounded-3xl p-0 text-[var(--color-foreground)] backdrop:bg-[var(--color-background)]/50 backdrop:backdrop-blur-md">
       <div className="flex items-start justify-between border-b border-[var(--color-border)] p-6">
         <div>
           <h2 id="profile-title" className="font-display text-2xl text-balance">Profile settings</h2>
