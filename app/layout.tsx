@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next"
 import { Outfit, Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
 import { OfflineProvider } from "@/components/offline-provider"
-import { SpaceGolfBackground } from "@/components/space-golf-background"
+import { LiquidGlassBackground } from "@/components/liquid-glass-background"
 import "./globals.css"
 
 const display = Outfit({
@@ -54,7 +54,7 @@ export default function RootLayout({
     <html lang="en" className={`${display.variable} ${sans.variable}`} suppressHydrationWarning>
       <body>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          <SpaceGolfBackground />
+          <LiquidGlassBackground />
           {children}
           <OfflineProvider />
         </ThemeProvider>
