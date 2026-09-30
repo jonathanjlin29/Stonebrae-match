@@ -55,11 +55,8 @@ export function PlayerGate({ players }: { players: Player[] }) {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-4rem)] items-center justify-center px-4 py-10">
-      <section
-        aria-labelledby="gate-title"
-        className="liquid-glass animate-pop w-full max-w-md rounded-[2rem] p-6 sm:p-8"
-      >
+    <div className="flex min-h-[calc(100dvh-4rem)] items-center justify-center py-10">
+      <section aria-labelledby="gate-title" className="animate-pop w-full max-w-md px-4">
         <header className="mb-6 flex flex-col items-center text-center">
           <span className="liquid-glass-item mb-4 flex h-14 w-14 items-center justify-center rounded-2xl">
             <img src="/space-golf/golfball.png" alt="" className="h-8 w-8" />
@@ -86,14 +83,14 @@ export function PlayerGate({ players }: { players: Player[] }) {
               />
             </div>
 
-            <ul className="-mx-1 mb-4 flex max-h-80 flex-col gap-2 overflow-y-auto px-1 py-1">
+            <ul className="-mx-4 mb-4 flex flex-col gap-2 py-1 sm:mx-0">
               {filtered.map((p) => (
                 <li key={p.id}>
                   <button
                     type="button"
                     disabled={pending}
                     onClick={() => choose(p.id)}
-                    className="liquid-glass-item group flex w-full items-center gap-3 rounded-2xl p-3 text-left outline-none disabled:opacity-50"
+                    className="liquid-glass-item group flex w-full items-center gap-3 rounded-none border-x-0 px-4 py-3 text-left outline-none disabled:opacity-50 sm:rounded-2xl sm:border-x sm:p-3"
                   >
                     <PlayerAvatar player={p} size="lg" />
                     <span className="min-w-0 flex-1">
