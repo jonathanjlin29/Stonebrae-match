@@ -1,9 +1,16 @@
 "use client"
 
-import { addPress, completeRound, createRound, saveScore, updatePressAmount } from "@/app/actions/rounds"
+import { createRound } from "@/app/actions/rounds"
 import { createPlayer } from "@/app/actions/players"
 import { COURSE, STONEBRAE_ID, type SavedCourse } from "@/lib/course"
-import { cachePage, enqueueMutation, replayQueuedMutations, resolveId, setActiveOfflineRound } from "@/lib/offline-store"
+import {
+  cachePage,
+  enqueueMutation,
+  replayQueuedMutations,
+  resolveId,
+  scheduleSync,
+  setActiveOfflineRound,
+} from "@/lib/offline-store"
 import type { Match, Player, Round, RoundPlayer, Scores } from "@/lib/types"
 
 // Round/player ids created offline are negative placeholders until the server assigns a real
@@ -99,16 +106,26 @@ export async function createRoundOffline(input: {
   return { ok: true, roundId: tempId }
 }
 
+// Round edits are local-first: every change is written to the on-device queue immediately, then
+// uploaded in order by a single background sync. The UI never waits on (or breaks because of)
+// the network, and two saves can never race each other on the server.
+
 export async function saveScoreOffline(roundId: number, playerId: number, hole: number, strokes: number | null) {
   const resolvedRoundId = await resolveMaybeTempId(roundId)
-  if (resolvedRoundId >= 0 && navigator.onLine) return saveScore(resolvedRoundId, playerId, hole, strokes)
-  await enqueueMutation("saveScore", { roundId: resolvedRoundId, playerId, hole, strokes })
+  await enqueueMutation(
+    "saveScore",
+    { roundId: resolvedRoundId, playerId, hole, strokes },
+    undefined,
+    `score:${resolvedRoundId}:${playerId}:${hole}`,
+  )
+  scheduleSync()
   return { ok: true, queued: true }
 }
 
 export async function addPressOffline(
   roundId: number,
   matchId: number,
+  pressId: string,
   scope: "front" | "back" | "overall",
   startHole: number,
   initiatedBy: "A" | "B",
@@ -116,30 +133,36 @@ export async function addPressOffline(
 ) {
   const resolvedRoundId = await resolveMaybeTempId(roundId)
   const resolvedMatchId = await resolveMaybeTempId(matchId)
-  if (resolvedRoundId >= 0 && resolvedMatchId >= 0 && navigator.onLine) {
-    return addPress(resolvedRoundId, resolvedMatchId, scope, startHole, initiatedBy, amount)
-  }
-  await enqueueMutation("addPress", { roundId: resolvedRoundId, matchId: resolvedMatchId, scope, startHole, initiatedBy, amount })
+  await enqueueMutation(
+    "addPress",
+    { roundId: resolvedRoundId, matchId: resolvedMatchId, pressId, scope, startHole, initiatedBy, amount },
+    `press-${pressId}`,
+  )
+  scheduleSync(200)
   return { ok: true, queued: true }
 }
 
 export async function updatePressAmountOffline(roundId: number, matchId: number, pressId: string, amount: number) {
   const resolvedRoundId = await resolveMaybeTempId(roundId)
   const resolvedMatchId = await resolveMaybeTempId(matchId)
-  if (resolvedRoundId >= 0 && resolvedMatchId >= 0 && navigator.onLine) {
-    return updatePressAmount(resolvedRoundId, resolvedMatchId, pressId, amount)
-  }
-  await enqueueMutation("updatePressAmount", { roundId: resolvedRoundId, matchId: resolvedMatchId, pressId, amount })
+  await enqueueMutation(
+    "updatePressAmount",
+    { roundId: resolvedRoundId, matchId: resolvedMatchId, pressId, amount },
+    undefined,
+    `press-amount:${pressId}`,
+  )
+  scheduleSync()
   return { ok: true, queued: true }
 }
 
 export async function completeRoundOffline(roundId: number) {
   const resolvedRoundId = await resolveMaybeTempId(roundId)
-  if (resolvedRoundId >= 0 && navigator.onLine) return completeRound(resolvedRoundId)
   await enqueueMutation("completeRound", { roundId: resolvedRoundId })
+  await replayQueuedMutations()
   return { ok: true, queued: true }
 }
 
 export async function syncOfflineChanges() {
   await replayQueuedMutations()
 }
+

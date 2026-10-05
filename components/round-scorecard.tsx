@@ -1,11 +1,17 @@
 "use client"
 
-import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-  import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown, Bird } from "lucide-react"
+import { Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown, Bird, X } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
-import { saveScoreOffline, addPressOffline, completeRoundOffline, updatePressAmountOffline } from "@/lib/offline-actions"
-import { cachePage } from "@/lib/offline-store"
+import {
+  saveScoreOffline,
+  addPressOffline,
+  completeRoundOffline,
+  updatePressAmountOffline,
+  syncOfflineChanges,
+} from "@/lib/offline-actions"
+import { cachePage, getQueuedMutations, readCachedPage } from "@/lib/offline-store"
 import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
   computeMatchMoney,
@@ -16,6 +22,7 @@ import {
   birdieStreakEndingAt,
   relToPar,
   getStrokesGiven,
+  type SegmentStatus,
 } from "@/lib/nassau"
 import { computeSettlement } from "@/lib/settlement"
 import { COURSE, type Hole } from "@/lib/course"
@@ -25,6 +32,9 @@ import { Button, Card, Badge, PlayerAvatar, SegmentedControl } from "./ui"
 
 type Celebration = { type: "bounce" | "fire" | "birdie"; name: string; detail: string; key: number }
 type Tab = "matches" | "scorecard" | "money"
+type DirtyCell = { value: number | null; at: number }
+type PressScope = "front" | "back" | "overall"
+const SCOPE_RANGE: Record<PressScope, [number, number]> = { front: [0, 8], back: [9, 17], overall: [0, 17] }
 
 export function RoundScorecard({
   round,
@@ -49,9 +59,13 @@ export function RoundScorecard({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  // Cells the user has typed into but that haven't been confirmed saved yet. A refetch that lands
-  // mid-edit must not clobber these, or the score the user just typed appears to "delete itself."
-  const dirtyRef = useRef<Set<string>>(new Set())
+  // Local-first edits: every score/press change is saved on this phone first and uploaded in the
+  // background. Until the server's copy agrees, these overlay whatever the server sends so a
+  // refresh can never wipe out something just entered.
+  const dirtyRef = useRef<Map<string, DirtyCell>>(new Map())
+  const pendingPressesRef = useRef<Map<string, Press>>(new Map())
+  const pendingAmountsRef = useRef<Map<string, number>>(new Map())
+  const serverRef = useRef<{ scores: Scores; matches: Match[] }>({ scores: round.scores, matches: round.matches })
 
   const players = round.players.map((p) => ({
     id: p.id,
@@ -66,33 +80,97 @@ export function RoundScorecard({
   const isActive = round.status === "active"
   const canEditScores = !isPublicView && (isActive || isAdmin)
 
-  // Keep local state in sync whenever the server component re-fetches (poll or manual refresh),
-  // but preserve any cell that's still being edited/saved so in-flight input isn't overwritten.
-  useEffect(() => {
-    setScores((prev) => mergeScores(round.scores, prev, dirtyRef.current))
-    setMatches(round.matches)
-  }, [round])
+  const applyOverlay = useCallback(() => {
+    setScores(mergeScores(serverRef.current.scores, dirtyRef.current))
+    setMatches(mergeMatches(serverRef.current.matches, pendingPressesRef.current, pendingAmountsRef.current))
+  }, [])
 
-  // Keep a local copy of the round so an offline direct visit to this page (or the shared public
-  // link) can still render the last known scores instead of an empty shell.
   useEffect(() => {
-    void cachePage(`round:${round.id}`, round)
-  }, [round])
+    serverRef.current = { scores: round.scores, matches: round.matches }
+    applyOverlay()
+  }, [round, applyOverlay])
 
-  // Everyone viewing an active round gets a periodic re-sync so scores/presses/money stay current
-  // without needing push infrastructure.
+  // Restore edits still waiting to upload (e.g. after reloading the app with no signal). When
+  // offline, the snapshot saved on this phone is newer than any cached page, so prefer it.
   useEffect(() => {
-    if (!isActive) return
-    const interval = setInterval(() => {
-      router.refresh()
-    }, 30 * 1000)
-    return () => clearInterval(interval)
+    let cancelled = false
+    async function restore() {
+      if (!navigator.onLine) {
+        const snapshot = await readCachedPage<Round>(`round:${round.id}`)
+        if (snapshot && !cancelled) serverRef.current = { scores: snapshot.scores, matches: snapshot.matches }
+      }
+      const queued = await getQueuedMutations()
+      if (cancelled) return
+      for (const mutation of queued) {
+        const p = mutation.payload as Record<string, any>
+        if (p?.roundId !== round.id) continue
+        if (mutation.action === "saveScore") {
+          dirtyRef.current.set(`${p.playerId}:${p.hole}`, { value: p.strokes ?? null, at: mutation.createdAt })
+        } else if (mutation.action === "addPress" && p.pressId) {
+          pendingPressesRef.current.set(p.pressId, {
+            id: p.pressId,
+            matchId: p.matchId,
+            scope: p.scope,
+            startHole: p.startHole,
+            initiatedBy: p.initiatedBy,
+            amount: p.amount,
+          })
+        } else if (mutation.action === "updatePressAmount") {
+          pendingAmountsRef.current.set(p.pressId, p.amount)
+        }
+      }
+      applyOverlay()
+    }
+    restore().catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [round.id, applyOverlay])
+
+  // Keep the latest on-screen state on the phone so the round still opens with no signal.
+  useEffect(() => {
+    void cachePage(`round:${round.id}`, { ...round, scores, matches })
+  }, [round, scores, matches])
+
+  // Pull fresh data only when it can actually arrive: refreshing with no connection is what used
+  // to knock the page over. Also refresh right after queued edits finish uploading.
+  useEffect(() => {
+    const refreshIfOnline = () => {
+      if (navigator.onLine && document.visibilityState === "visible") router.refresh()
+    }
+    const onSynced = async () => {
+      // A cell whose upload finished a while ago but still disagrees was changed by someone
+      // else — stop overriding it and let the server's value show.
+      const queuedKeys = new Set(
+        (await getQueuedMutations())
+          .filter((m) => m.action === "saveScore")
+          .map((m) => {
+            const p = m.payload as { playerId: number; hole: number }
+            return `${p.playerId}:${p.hole}`
+          }),
+      )
+      const cutoff = Date.now() - 60 * 1000
+      for (const [key, cell] of dirtyRef.current) {
+        if (!queuedKeys.has(key) && cell.at < cutoff) dirtyRef.current.delete(key)
+      }
+      refreshIfOnline()
+    }
+    window.addEventListener("offline-synced", onSynced)
+    const interval = isActive ? setInterval(refreshIfOnline, 30 * 1000) : null
+    return () => {
+      window.removeEventListener("offline-synced", onSynced)
+      if (interval) clearInterval(interval)
+    }
   }, [isActive, router])
 
   function manualRefresh() {
     setRefreshing(true)
-    router.refresh()
-    setTimeout(() => setRefreshing(false), 600)
+    syncOfflineChanges()
+      .catch(() => undefined)
+      .finally(() => {
+        if (navigator.onLine) router.refresh()
+        setTimeout(() => setRefreshing(false), 400)
+      })
   }
 
   const totals = useMemo(() => {
@@ -117,106 +195,91 @@ export function RoundScorecard({
   }
 
   function updateScore(playerId: number, hole: number, raw: string) {
-    const value = raw === "" ? null : Math.max(1, Math.min(15, Number(raw)))
-    dirtyRef.current.add(`${playerId}:${hole}`)
-    setScores((prev) => {
-      const next = clone(prev)
-      if (!next[playerId]) next[playerId] = Array(18).fill(null)
-      next[playerId][hole] = value
-      if (value != null) {
-        const holes = next[playerId]
-        const player = players.find((p) => p.id === playerId)
-        if (isBounceBack(holes, hole, courseHoles) && player) {
-          fireCelebration({ type: "bounce", name: shortLabel(player), detail: "Bounce Back" })
-        } else {
-          const streak = birdieStreakEndingAt(holes, hole, courseHoles)
-          if (streak >= 2 && player) {
-            fireCelebration({ type: "fire", name: shortLabel(player), detail: `Fire Hot · ${streak} in a row` })
-          } else if (
-            player &&
-            currentPlayerId != null &&
-            playerId === currentPlayerId &&
-            relToPar(value, courseHoles[hole].par) === "birdie"
-          ) {
-            fireCelebration({ type: "birdie", name: shortLabel(player), detail: "Birdie!" })
-          }
-        }
-      }
-      return next
-    })
+    if (raw !== "" && !Number.isFinite(Number(raw))) return
+    const value = raw === "" ? null : Math.max(1, Math.min(15, Math.round(Number(raw))))
+    dirtyRef.current.set(`${playerId}:${hole}`, { value, at: Date.now() })
+    const next = clone(scores)
+    if (!next[playerId]) next[playerId] = Array(18).fill(null)
+    next[playerId][hole] = value
+    setScores(next)
+    saveScoreOffline(round.id, playerId, hole, value).catch((error) =>
+      console.error("[scorecard] Could not save score on this phone", error),
+    )
+
+    if (value == null) return
+    const holes = next[playerId]
+    const player = players.find((p) => p.id === playerId)
+    if (!player) return
+    if (isBounceBack(holes, hole, courseHoles)) {
+      fireCelebration({ type: "bounce", name: shortLabel(player), detail: "Bounce Back" })
+      return
+    }
+    const streak = birdieStreakEndingAt(holes, hole, courseHoles)
+    if (streak >= 2) {
+      fireCelebration({ type: "fire", name: shortLabel(player), detail: `Fire Hot · ${streak} in a row` })
+    } else if (playerId === currentPlayerId && relToPar(value, courseHoles[hole].par) === "birdie") {
+      fireCelebration({ type: "birdie", name: shortLabel(player), detail: "Birdie!" })
+    }
   }
 
-  function commitScore(playerId: number, hole: number) {
-    const value = scores[playerId]?.[hole] ?? null
-    // Deliberately don't clear dirtyRef here: a background refresh in flight when this save
-    // started can still land afterward carrying pre-save data. The sync effect below is the
-    // sole authority for clearing a cell's dirty flag, and only does so once the server value
-    // it received actually agrees with what's on screen — so a stale refresh can never wipe out
-    // a value that hasn't been confirmed saved yet.
-    start(async () => {
-      await saveScoreOffline(round.id, playerId, hole, value)
-    })
+  function addPress(match: Match, scope: PressScope, startHole: number, amount: number) {
+    const [segStart] = SCOPE_RANGE[scope]
+    const before = startHole > segStart ? computeMatchStatus(match, scores, players, segStart, startHole - 1, courseHoles) : []
+    const statusBefore = before.length ? before[before.length - 1].statusA : 0
+    // The side that's down is the one pressing; an all-square back-dated press defaults to A.
+    const initiatedBy: "A" | "B" = statusBefore > 0 ? "B" : "A"
+    const press: Press = {
+      id: `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+      matchId: match.id,
+      scope,
+      startHole,
+      initiatedBy,
+      amount,
+    }
+    pendingPressesRef.current.set(press.id, press)
+    applyOverlay()
+    addPressOffline(round.id, match.id, press.id, scope, startHole, initiatedBy, amount).catch((error) =>
+      console.error("[scorecard] Could not save press on this phone", error),
+    )
   }
 
-  function pressScope(
-    match: Match,
-    scope: "front" | "back" | "overall",
-    amount: number,
-  ): { ok: true } | { ok: false; reason: string } {
-    const [start_, end] = scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
-    const status = computeSegmentStatus(match, scores, players, start_, end, courseHoles)
-    if (status.holes.length === 0) {
-      return { ok: false, reason: "No holes have been played on this nine yet." }
-    }
-    if (status.frozen || status.holes.length === end - start_ + 1) {
-      return { ok: false, reason: "This segment is already closed out — there are no holes left to press." }
-    }
-    if (status.finalStatusA === 0) {
-      return { ok: false, reason: "You can't press while the match is all square." }
-    }
-    const initiatedBy = status.finalStatusA > 0 ? "B" : "A"
-    const startHole = start_ + status.holes.length
-    start(async () => {
-      const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy, amount)
-      if (res.ok) {
-        setMatches((prev) =>
-          prev.map((m) =>
-            m.id === match.id
-              ? {
-                  ...m,
-                  presses: [...m.presses, { id: `local-${Date.now()}`, matchId: match.id, scope, startHole, initiatedBy, amount }],
-                }
-              : m,
-          ),
-        )
-      }
-    })
-    return { ok: true }
+  function changePressAmount(match: Match, pressId: string, amount: number) {
+    const pending = pendingPressesRef.current.get(pressId)
+    if (pending) pendingPressesRef.current.set(pressId, { ...pending, amount })
+    pendingAmountsRef.current.set(pressId, amount)
+    applyOverlay()
+    updatePressAmountOffline(round.id, match.id, pressId, amount).catch((error) =>
+      console.error("[scorecard] Could not save press amount on this phone", error),
+    )
   }
 
-  function finish() {
+  async function finish() {
     setCompleting(true)
-    start(async () => {
+    try {
       await completeRoundOffline(round.id)
-      router.push("/")
-      router.refresh()
-    })
+    } catch (error) {
+      console.error("[scorecard] Could not complete round", error)
+    }
+    router.push("/")
+    if (navigator.onLine) router.refresh()
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     setDeleting(true)
     setDeleteError(null)
-    start(async () => {
+    try {
       const res = await deleteRound(round.id)
       if (res.ok) {
         router.push("/")
         router.refresh()
-      } else {
-        setDeleting(false)
-        setConfirmingDelete(false)
-        setDeleteError(res.error)
+        return
       }
-    })
+      setDeleteError(res.error)
+    } catch {
+      setDeleteError("You need a connection to delete a round. Try again when you have signal.")
+    }
+    setDeleting(false)
+    setConfirmingDelete(false)
   }
 
   return (
@@ -306,22 +369,26 @@ export function RoundScorecard({
         <MoneyTab matches={matches} scores={scores} players={players} totals={totals} courseHoles={courseHoles} />
       </section>
 
-      <section className={`mb-6 grid gap-3 ${tab === "matches" ? "" : "hidden"}`}>
+      <section className={`mb-6 grid gap-2 sm:grid-cols-2 ${tab === "matches" ? "" : "hidden"}`}>
         {matches.map((m) => (
           <MatchCard
             key={m.id}
-            roundId={round.id}
             match={m}
             scores={scores}
             players={players}
             courseHoles={courseHoles}
-            isActive={isActive}
-            isAdmin={isAdmin}
+            canPress={canEditScores}
+            isAdmin={isAdmin && !isPublicView}
             currentPlayerId={currentPlayerId}
-            onPress={pressScope}
-            onBetsChanged={(matchId, nineBet, overallBet) =>
-              setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
-            }
+            onAddPress={addPress}
+            onPressAmount={changePressAmount}
+            onBetsChanged={(matchId, nineBet, overallBet) => {
+              serverRef.current = {
+                ...serverRef.current,
+                matches: serverRef.current.matches.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)),
+              }
+              applyOverlay()
+            }}
           />
         ))}
       </section>
@@ -387,7 +454,7 @@ export function RoundScorecard({
                             inputMode="numeric"
                             value={v ?? ""}
                             onChange={(e) => updateScore(p.id, h, e.target.value)}
-                            onBlur={() => commitScore(p.id, h)}
+                            onBlur={() => void syncOfflineChanges().catch(() => undefined)}
                             className={`h-9 w-9 rounded-full bg-[var(--color-surface-2)] text-center font-semibold tabular outline-none transition-shadow focus:ring-2 focus:ring-[var(--color-primary)] ${relClass}`}
                           />
                           ) : (
@@ -469,7 +536,7 @@ export function RoundScorecard({
                           inputMode="numeric"
                           value={v ?? ""}
                           onChange={(e) => updateScore(p.id, hIdx, e.target.value)}
-                          onBlur={() => commitScore(p.id, hIdx)}
+                          onBlur={() => void syncOfflineChanges().catch(() => undefined)}
                           className={`h-10 w-10 rounded-full bg-[var(--color-surface-2)] text-center font-semibold tabular outline-none transition-shadow focus:ring-2 focus:ring-[var(--color-primary)] ${relClass}`}
                         />
                         ) : (
@@ -604,227 +671,363 @@ function SharePanel({ roundId }: { roundId: number }) {
   )
 }
 
+type ScorecardPlayer = { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }
+
+function statusToneClass(status: number) {
+  return status < 0
+    ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
+    : status > 0
+      ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
+      : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
+}
+
+function segmentLabel(status: SegmentStatus) {
+  if (!status.holes.length) return "–"
+  return status.frozen ? status.closeoutLabel! : getMatchStatusLabel(status.finalStatusA)
+}
+
+// Consecutive holes from the start of a segment where every player in the match has a score.
+function holesPlayedInRange(match: Match, scores: Scores, start: number, end: number) {
+  const ids = [...match.teamA, ...match.teamB]
+  let count = 0
+  for (let h = start; h <= end; h++) {
+    if (!ids.every((id) => scores[id]?.[h] != null)) break
+    count++
+  }
+  return count
+}
+
 function MatchCard({
-  roundId,
   match,
   scores,
   players,
   courseHoles,
-  isActive,
+  canPress,
   isAdmin,
   currentPlayerId,
-  onPress,
+  onAddPress,
+  onPressAmount,
   onBetsChanged,
 }: {
-  roundId: number
   match: Match
   scores: Scores
-  players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
+  players: ScorecardPlayer[]
   courseHoles: Hole[]
-  isActive: boolean
+  canPress: boolean
   isAdmin: boolean
   currentPlayerId: number | null
-  onPress: (
-    match: Match,
-    scope: "front" | "back" | "overall",
-    amount: number,
-  ) => { ok: true } | { ok: false; reason: string }
+  onAddPress: (match: Match, scope: PressScope, startHole: number, amount: number) => void
+  onPressAmount: (match: Match, pressId: string, amount: number) => void
   onBetsChanged: (matchId: number, nineBet: number, overallBet: number) => void
 }) {
   const [pressOpen, setPressOpen] = useState(false)
-  const [pressChoice, setPressChoice] = useState<"nine" | "overall" | null>(null)
-  const [pressAmount, setPressAmount] = useState("")
-  const [pressError, setPressError] = useState<string | null>(null)
 
   const byId = Object.fromEntries(players.map((p) => [p.id, p]))
   const teamAName = match.teamA.map((id) => shortLabel(byId[id])).join(" & ")
   const teamBName = match.teamB.map((id) => shortLabel(byId[id])).join(" & ")
-  const teamAPlayers = match.teamA.map((id) => byId[id]).filter(Boolean)
-  const teamBPlayers = match.teamB.map((id) => byId[id]).filter(Boolean)
 
   const front = computeSegmentStatus(match, scores, players, 0, 8, courseHoles)
   const back = computeSegmentStatus(match, scores, players, 9, 17, courseHoles)
   const overall = computeSegmentStatus(match, scores, players, 0, 17, courseHoles)
+  const allHoles = computeMatchStatus(match, scores, players, 0, 17, courseHoles)
 
-  const frontLabel = front.holes.length ? (front.frozen ? front.closeoutLabel! : getMatchStatusLabel(front.finalStatusA)) : "Not started"
-  const backLabel = back.holes.length ? (back.frozen ? back.closeoutLabel! : getMatchStatusLabel(back.finalStatusA)) : "Not started"
-  const overallLabel = overall.holes.length
-    ? overall.frozen
-      ? overall.closeoutLabel!
-      : getMatchStatusLabel(overall.finalStatusA)
-    : "Not started"
-  const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
-  const teamSign = currentTeam === "B" ? -1 : 1
-  const frontStatus = front.holes.length ? front.finalStatusA * teamSign : 0
-  const backStatus = back.holes.length ? back.finalStatusA * teamSign : 0
+  const teamSign = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? -1 : 1
   const overallStatus = overall.holes.length ? overall.finalStatusA * teamSign : 0
-  const statusTone = overallStatus < 0
-    ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
-    : overallStatus > 0
-      ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
-      : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
-
-  const canPressFront = isActive && front.holes.length > 0 && front.holes.length < 9 && !front.frozen
-  const canPressBack =
-    isActive && back.holes.length > 0 && back.holes.length < 9 && front.holes.length === 9 && !back.frozen
-  const canPressOverall = isActive && overall.holes.length > 0 && overall.holes.length < 18 && !overall.frozen
-  const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
-  const canPressAny = currentNine != null || canPressOverall
-
-  function openPress(choice: "nine" | "overall") {
-    setPressChoice(choice)
-    setPressAmount(String(choice === "overall" ? match.overallBet : match.nineBet))
-    setPressError(null)
-  }
-
-  function closePress() {
-    setPressOpen(false)
-    setPressChoice(null)
-    setPressAmount("")
-    setPressError(null)
-  }
-
-  function confirmPress() {
-    if (!pressChoice) return
-    const scope = pressChoice === "overall" ? "overall" : currentNine
-    if (!scope) return
-    const amount = Math.round(Math.max(0, Number(pressAmount) || 0))
-    const result = onPress(match, scope, amount)
-    if (result.ok) {
-      closePress()
-    } else {
-      setPressError(result.reason)
-    }
-  }
 
   return (
-    <Card className={`p-4 sm:p-5 transition-colors ${statusTone}`}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 font-semibold">
-          <Flag className="h-4 w-4 shrink-0 text-[var(--color-primary)]" />
-          <div className="flex -space-x-2">
-            {teamAPlayers.map((p) => (
-              <PlayerAvatar key={p.id} player={p} size="sm" />
-            ))}
-          </div>
-          <span>{teamAName}</span>
-          <span className="font-display text-sm text-[var(--color-muted)]">vs</span>
-          <span>{teamBName}</span>
-          <div className="flex -space-x-2">
-            {teamBPlayers.map((p) => (
-              <PlayerAvatar key={p.id} player={p} size="sm" />
-            ))}
-          </div>
-        </div>
-        {isAdmin ? (
-          <BetEditor match={match} onSaved={onBetsChanged} />
-        ) : (
-          <Badge className="tabular">
-            ${match.nineBet}/9 · ${match.overallBet} ovr
-          </Badge>
+    <Card className={`flex flex-col gap-2 p-2.5 transition-colors ${statusToneClass(overallStatus)}`}>
+      <div className="flex items-center gap-2">
+        <p className="flex min-w-0 flex-1 items-baseline gap-1.5 text-sm font-semibold">
+          <span className="truncate">{teamAName}</span>
+          <span className="shrink-0 text-xs font-normal text-[var(--color-muted)]">vs</span>
+          <span className="truncate">{teamBName}</span>
+        </p>
+        {!isAdmin && (
+          <span className="shrink-0 text-[11px] font-semibold tabular text-[var(--color-muted)]">
+            ${match.nineBet}/${match.overallBet}
+          </span>
+        )}
+        {canPress && (
+          <button
+            onClick={() => setPressOpen((v) => !v)}
+            aria-expanded={pressOpen}
+            className="flex h-7 shrink-0 items-center gap-1 rounded-full bg-[var(--color-gold)] px-2.5 text-xs font-bold text-[#2a1e00] transition-transform active:scale-95"
+          >
+            {pressOpen ? <X className="h-3.5 w-3.5" /> : <Swords className="h-3.5 w-3.5" />}
+            {pressOpen ? "Close" : "Press"}
+          </button>
         )}
       </div>
-      <div className="grid gap-1.5 sm:grid-cols-3">
-        <div className="grid gap-1">
-          <StatusRow label="Front" value={frontLabel} status={frontStatus} frozen={front.frozen} />
-          <HoleTimeline holes={front.holes} teamSign={teamSign} />
-        </div>
-        <div className="grid gap-1">
-          <StatusRow label="Back" value={backLabel} status={backStatus} frozen={back.frozen} />
-          <HoleTimeline holes={back.holes} teamSign={teamSign} />
-        </div>
-        <div className="grid gap-1">
-          <StatusRow label="Overall" value={overallLabel} status={overallStatus} frozen={overall.frozen} />
-          <HoleTimeline holes={overall.holes} teamSign={teamSign} />
-        </div>
+
+      {isAdmin && <BetEditor match={match} onSaved={onBetsChanged} />}
+
+      <div className="grid grid-cols-3 gap-1.5">
+        <SegmentChip label="F" value={segmentLabel(front)} status={front.holes.length ? front.finalStatusA * teamSign : 0} frozen={front.frozen} />
+        <SegmentChip label="B" value={segmentLabel(back)} status={back.holes.length ? back.finalStatusA * teamSign : 0} frozen={back.frozen} />
+        <SegmentChip label="Ovr" value={segmentLabel(overall)} status={overallStatus} frozen={overall.frozen} />
       </div>
+
+      <HoleStrip holes={allHoles} teamSign={teamSign} />
+
       {match.presses.length > 0 && (
-          <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-          {match.presses.map((p) => (
-            <PressRow
+        <div className="grid grid-cols-3 gap-1">
+          {match.presses.map((p, i) => (
+            <PressChip
               key={p.id}
-              roundId={roundId}
+              index={i + 1}
               press={p}
               match={match}
               scores={scores}
               players={players}
               courseHoles={courseHoles}
-              currentPlayerId={currentPlayerId}
+              teamSign={teamSign}
+              canEdit={canPress}
+              onAmount={(amount) => onPressAmount(match, p.id, amount)}
             />
           ))}
         </div>
       )}
-      {canPressAny && (
-        <div className="mt-4 border-t border-[var(--color-border)] pt-4">
-          {!pressOpen ? (
-            <button
-              onClick={() => setPressOpen(true)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-full bg-[var(--color-gold)] px-4 py-2.5 text-sm font-bold text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-[0.98] hover:brightness-105"
-            >
-              <Swords className="h-4 w-4" /> Press
-            </button>
-          ) : !pressChoice ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {currentNine && (
-                <button
-                  onClick={() => openPress("nine")}
-                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
-                >
-                  Press {currentNine === "front" ? "Front" : "Back"} Nine
-                </button>
-              )}
-              {canPressOverall && (
-                <button
-                  onClick={() => openPress("overall")}
-                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
-                >
-                  Press Overall
-                </button>
-              )}
-              <button
-                onClick={closePress}
-                className="rounded-full px-4 py-2.5 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold">
-                  Press {pressChoice === "overall" ? "Overall" : `${currentNine === "front" ? "Front" : "Back"} Nine`} for
-                </span>
-                <span className="text-[var(--color-muted)]">$</span>
-                <input
-                  type="number"
-                  autoFocus
-                  value={pressAmount}
-                  onChange={(e) => setPressAmount(e.target.value)}
-                  className="h-9 w-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
-                />
-                <button
-                  onClick={confirmPress}
-                  className="rounded-full bg-[var(--color-gold)] px-4 py-2 text-sm font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
-                >
-                  Confirm
-                </button>
-                <button
-                  onClick={closePress}
-                  className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
-                >
-                  Cancel
-                </button>
-              </div>
-              {pressError && (
-                <p className="text-sm font-medium text-[var(--color-danger)]" role="alert">
-                  {pressError}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+
+      {pressOpen && (
+        <PressForm
+          match={match}
+          scores={scores}
+          onCancel={() => setPressOpen(false)}
+          onConfirm={(scope, startHole, amount) => {
+            onAddPress(match, scope, startHole, amount)
+            setPressOpen(false)
+          }}
+        />
       )}
     </Card>
+  )
+}
+
+function SegmentChip({ label, value, status, frozen }: { label: string; value: string; status: number; frozen: boolean }) {
+  const tone =
+    status < 0
+      ? "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
+      : status > 0
+        ? "bg-[var(--color-primary)]/15 text-[var(--color-primary)]"
+        : "bg-[var(--color-surface-2)] text-[var(--color-foreground)]"
+  return (
+    <div className={`flex items-center justify-between gap-1 rounded-lg px-2 py-1 ${tone}`}>
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</span>
+      <span className="flex min-w-0 items-center gap-0.5 truncate font-display text-sm leading-none tabular">
+        {frozen && <Lock className="h-2.5 w-2.5 shrink-0 text-[var(--color-gold)]" aria-label="Decided" />}
+        {value}
+      </span>
+    </div>
+  )
+}
+
+// All 18 holes as a thin strip: green = won, blue = halved, red = lost, grey = not played yet.
+function HoleStrip({
+  holes,
+  teamSign,
+}: {
+  holes: { hole: number; holeWinner: "A" | "B" | "halved" }[]
+  teamSign: number
+}) {
+  const byHole = new Map(holes.map((h) => [h.hole, h.holeWinner]))
+  const cell = (h: number) => {
+    const w = byHole.get(h)
+    const outcome = w == null ? null : w === "halved" ? "push" : (w === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
+    const tone =
+      outcome === "won"
+        ? "bg-[var(--color-primary)]"
+        : outcome === "lost"
+          ? "bg-[var(--color-danger)]"
+          : outcome === "push"
+            ? "bg-[var(--color-match-square)]"
+            : "bg-[var(--color-surface-2)]"
+    return <span key={h} className={`h-1.5 flex-1 rounded-full ${tone}`} />
+  }
+  return (
+    <div className="flex gap-1.5" aria-hidden>
+      <div className="flex flex-1 gap-0.5">{Array.from({ length: 9 }, (_, i) => cell(i))}</div>
+      <div className="flex flex-1 gap-0.5">{Array.from({ length: 9 }, (_, i) => cell(i + 9))}</div>
+    </div>
+  )
+}
+
+function PressForm({
+  match,
+  scores,
+  onConfirm,
+  onCancel,
+}: {
+  match: Match
+  scores: Scores
+  onConfirm: (scope: PressScope, startHole: number, amount: number) => void
+  onCancel: () => void
+}) {
+  const frontPlayed = holesPlayedInRange(match, scores, 0, 8)
+  const options = (["front", "back", "overall"] as PressScope[]).map((scope) => {
+    const [s, e] = SCOPE_RANGE[scope]
+    const played = holesPlayedInRange(match, scores, s, e)
+    // Any hole already played can be pressed retroactively, plus the next hole to play.
+    const maxStart = Math.min(e, s + played)
+    const available = scope !== "back" || frontPlayed === 9 || played > 0
+    return { scope, s, maxStart, available }
+  })
+  const defaultScope: PressScope = frontPlayed === 9 ? "back" : "front"
+  const [scope, setScope] = useState<PressScope>(defaultScope)
+  const current = options.find((o) => o.scope === scope)!
+  const [startHole, setStartHole] = useState(current.maxStart)
+  const [amount, setAmount] = useState(String(scope === "overall" ? match.overallBet : match.nineBet))
+
+  function pickScope(next: PressScope) {
+    const opt = options.find((o) => o.scope === next)!
+    setScope(next)
+    setStartHole(opt.maxStart)
+    setAmount(String(next === "overall" ? match.overallBet : match.nineBet))
+  }
+
+  const holeChoices = Array.from({ length: current.maxStart - current.s + 1 }, (_, i) => current.s + i)
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-2">
+      <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Press segment">
+        {options.map((o) => (
+          <button
+            key={o.scope}
+            role="radio"
+            aria-checked={scope === o.scope}
+            disabled={!o.available}
+            onClick={() => pickScope(o.scope)}
+            className={`h-8 rounded-lg text-xs font-semibold capitalize transition-colors disabled:opacity-35 ${
+              scope === o.scope
+                ? "bg-[var(--color-gold)] text-[#2a1e00]"
+                : "bg-[var(--color-surface-2)] text-[var(--color-foreground)]"
+            }`}
+          >
+            {o.scope}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="flex flex-1 items-center gap-1.5 text-xs text-[var(--color-muted)]">
+          From hole
+          <select
+            value={startHole}
+            onChange={(e) => setStartHole(Number(e.target.value))}
+            className="h-8 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-sm font-semibold text-[var(--color-foreground)] outline-none focus:border-[var(--color-primary)]"
+          >
+            {holeChoices.map((h) => (
+              <option key={h} value={h}>
+                {h + 1}
+                {h === current.maxStart ? " (next)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-1 text-xs text-[var(--color-muted)]">
+          $
+          <input
+            type="number"
+            inputMode="numeric"
+            aria-label="Press amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="h-8 w-14 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1 text-center text-sm font-semibold tabular text-[var(--color-foreground)] outline-none focus:border-[var(--color-primary)]"
+          />
+        </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onConfirm(scope, startHole, Math.round(Math.max(0, Number(amount) || 0)))}
+          className="h-8 flex-1 rounded-full bg-[var(--color-gold)] text-xs font-bold text-[#2a1e00] transition-transform active:scale-95"
+        >
+          Add press from hole {startHole + 1}
+        </button>
+        <button onClick={onCancel} className="h-8 rounded-full px-3 text-xs font-semibold text-[var(--color-muted)]">
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PressChip({
+  index,
+  press,
+  match,
+  scores,
+  players,
+  courseHoles,
+  teamSign,
+  canEdit,
+  onAmount,
+}: {
+  index: number
+  press: Press
+  match: Match
+  scores: Scores
+  players: ScorecardPlayer[]
+  courseHoles: Hole[]
+  teamSign: number
+  canEdit: boolean
+  onAmount: (amount: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [amount, setAmount] = useState(String(press.amount))
+  const end = press.scope === "front" ? 8 : 17
+  const status = computeSegmentStatus(match, scores, players, press.startHole, end, courseHoles)
+  const statusVal = status.holes.length ? status.finalStatusA * teamSign : 0
+  const scopeLetter = press.scope === "overall" ? "O" : press.scope === "front" ? "F" : "B"
+  const valueTone =
+    statusVal < 0 ? "text-[var(--color-danger)]" : statusVal > 0 ? "text-[var(--color-primary)]" : "text-[var(--color-foreground)]"
+
+  function commit() {
+    const value = Math.round(Math.max(0, Number(amount) || 0))
+    setAmount(String(value))
+    setEditing(false)
+    if (value !== press.amount) onAmount(value)
+  }
+
+  return (
+    <div
+      className={`flex min-w-0 items-center gap-1 rounded-md border px-1.5 py-1 text-[11px] font-semibold ${statusToneClass(statusVal)}`}
+      title={`Press ${index}: ${press.scope} from hole ${press.startHole + 1}`}
+    >
+      <span className="shrink-0 text-[var(--color-gold)]">
+        {scopeLetter}
+        {press.startHole + 1}
+      </span>
+      <span className={`truncate tabular ${valueTone}`}>{segmentLabel(status)}</span>
+      {editing ? (
+        <input
+          type="number"
+          inputMode="numeric"
+          autoFocus
+          aria-label={`Press ${index} amount`}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) commit()
+            if (e.key === "Escape") {
+              setAmount(String(press.amount))
+              setEditing(false)
+            }
+          }}
+          className="ml-auto h-5 w-10 shrink-0 rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] text-center tabular outline-none"
+        />
+      ) : (
+        <button
+          onClick={() => {
+            setAmount(String(press.amount))
+            setEditing(true)
+          }}
+          disabled={!canEdit}
+          aria-label={`Edit press ${index} amount, currently $${press.amount}`}
+          className="ml-auto shrink-0 tabular text-[var(--color-foreground)] underline-offset-2 enabled:underline"
+        >
+          ${press.amount}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -871,107 +1074,6 @@ function BetEditor({
       />
       <span className="text-[var(--color-muted)]">ovr</span>
     </div>
-  )
-}
-
-function PressRow({
-  roundId,
-  press,
-  match,
-  scores,
-  players,
-  courseHoles,
-  currentPlayerId,
-}: {
-  roundId: number
-  press: Press
-  match: Match
-  scores: Scores
-  players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
-  courseHoles: Hole[]
-  currentPlayerId: number | null
-}) {
-  const end = press.scope === "front" ? 8 : 17
-  const status = computeSegmentStatus(match, scores, players, press.startHole, end, courseHoles)
-  const label = status.holes.length
-    ? status.frozen
-      ? status.closeoutLabel!
-      : getMatchStatusLabel(status.finalStatusA)
-    : "Not started"
-  const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
-  const teamSign = currentTeam === "B" ? -1 : 1
-  const statusVal = status.holes.length ? status.finalStatusA * teamSign : 0
-  const statusTone =
-    statusVal < 0
-      ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
-      : statusVal > 0
-        ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
-        : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
-
-  const scopeLabel = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front Nine" : "Back Nine"
-
-  return (
-    <div className={`rounded-xl border-l-4 px-2.5 py-2 transition-colors ${statusTone}`}>
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
-        <Swords className="h-3 w-3 shrink-0 text-[var(--color-gold)]" />
-        <Badge className="bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]">Press</Badge>
-          <span className="text-[var(--color-muted)]">{scopeLabel}</span>
-        <div className="ml-auto flex items-center gap-1.5">
-          <PressAmountEditor roundId={roundId} matchId={match.id} press={press} />
-        </div>
-      </div>
-      <StatusRow label={scopeLabel} value={label} status={statusVal} frozen={status.frozen} />
-      <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-1.5" />
-    </div>
-  )
-}
-
-function PressAmountEditor({ roundId, matchId, press }: { roundId: number; matchId: number; press: Press }) {
-  const [editing, setEditing] = useState(false)
-  const [amount, setAmount] = useState(String(press.amount))
-  const [, start] = useTransition()
-
-  function commit() {
-    const value = Math.round(Math.max(0, Number(amount) || 0))
-    setAmount(String(value))
-    setEditing(false)
-    if (value === press.amount) return
-    start(async () => {
-      await updatePressAmountOffline(roundId, matchId, press.id, value)
-    })
-  }
-
-  if (editing) {
-    return (
-      <span className="flex items-center gap-1 text-[10px] font-semibold tabular">
-        <span className="text-[var(--color-muted)]">$</span>
-        <input
-          type="number"
-          autoFocus
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit()
-            if (e.key === "Escape") {
-              setAmount(String(press.amount))
-              setEditing(false)
-            }
-          }}
-          className="h-6 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 text-center outline-none focus:border-[var(--color-primary)]"
-        />
-      </span>
-    )
-  }
-
-  return (
-    <button
-      onClick={() => setEditing(true)}
-      className="flex items-center gap-1 text-[10px] font-semibold text-[var(--color-foreground)]"
-    >
-      <Badge className="tabular">${press.amount}</Badge>
-      <span className="text-[var(--color-primary)] underline underline-offset-2">Edit</span>
-    </button>
   )
 }
 
@@ -1110,79 +1212,6 @@ function MoneySegmentRow({
   )
 }
 
-function StatusRow({
-  label,
-  value,
-  status = 0,
-  frozen = false,
-}: {
-  label: string
-  value: string
-  status?: number
-  frozen?: boolean
-}) {
-  const tone =
-    status < 0
-      ? "bg-[var(--color-danger)]/10"
-      : status > 0
-        ? "bg-[var(--color-primary)]/10"
-        : "bg-[var(--color-surface-2)]"
-  return (
-    <div className={`flex items-center justify-between rounded-xl px-3 py-2 transition-colors ${tone}`}>
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-        <p className="font-display text-base tracking-tight">{value}</p>
-      </div>
-      {frozen ? (
-        <Badge
-          className="gap-1 bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]"
-          title="Match is mathematically decided"
-        >
-          <Lock className="h-3 w-3" /> Frozen
-        </Badge>
-      ) : null}
-    </div>
-  )
-}
-
-// Hole-by-hole timeline: one colored box per hole played (from the viewer's perspective) —
-// green for a hole won, blue for a halved hole, red for a hole lost. Stops at the freeze point
-// since `holes` is already truncated there.
-function HoleTimeline({
-  holes,
-  teamSign,
-  className = "",
-}: {
-  holes: { hole: number; holeWinner: "A" | "B" | "halved" }[]
-  teamSign: number
-  className?: string
-}) {
-  if (holes.length === 0) return null
-  return (
-    <div className={`flex flex-wrap gap-1 ${className}`}>
-      {holes.map(({ hole, holeWinner }) => {
-        const outcome =
-          holeWinner === "halved" ? "push" : (holeWinner === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
-        const tone =
-          outcome === "won"
-            ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
-            : outcome === "push"
-              ? "bg-[var(--color-match-square)]/25 text-[var(--color-match-square)]"
-              : "bg-[var(--color-danger)]/20 text-[var(--color-danger)]"
-        return (
-          <span
-            key={hole}
-            title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
-            className={`flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular ${tone}`}
-          >
-            {hole + 1}
-          </span>
-        )
-      })}
-    </div>
-  )
-}
-
 function CelebrationOverlay({
   celebration,
   onDismiss,
@@ -1231,31 +1260,44 @@ function clone(s: Scores): Scores {
   return out
 }
 
-// Start from the freshly-fetched server scores, but keep whatever the user currently has typed
-// (or is still saving) for any cell marked dirty, so a refetch mid-edit can't erase live input.
-//
-// A cell only leaves `dirty` once the server value we just received actually agrees with what's
-// on screen. We deliberately don't clear dirty as soon as our own save request resolves: a
-// background refresh that started fetching before that save finished can still land afterward
-// carrying pre-save data, and trusting "my save promise resolved" timing over "the data I just
-// received matches" is what let a stale refresh silently wipe out just-typed scores.
-function mergeScores(server: Scores, local: Scores, dirty: Set<string>): Scores {
+// Server scores with every unconfirmed local edit laid on top. A cell stops being overridden
+// once the server's value agrees with what was entered on this phone.
+function mergeScores(server: Scores, dirty: Map<string, DirtyCell>): Scores {
   const out = clone(server)
-  for (const key of dirty) {
-    const [pidStr, holeStr] = key.split(":")
-    const pid = Number(pidStr)
-    const hole = Number(holeStr)
-    const localValue = local[pid]?.[hole] ?? null
-    const serverValue = out[pid]?.[hole] ?? null
-    if (serverValue === localValue) {
-      // The server has caught up to what's on screen; safe to stop overriding this cell.
+  for (const [key, cell] of dirty) {
+    const [pid, hole] = key.split(":").map(Number)
+    if ((out[pid]?.[hole] ?? null) === cell.value) {
       dirty.delete(key)
       continue
     }
     if (!out[pid]) out[pid] = Array(18).fill(null)
-    out[pid][hole] = localValue
+    out[pid][hole] = cell.value
   }
   return out
+}
+
+function mergeMatches(server: Match[], pendingPresses: Map<string, Press>, pendingAmounts: Map<string, number>): Match[] {
+  return server.map((m) => {
+    const serverIds = new Set(m.presses.map((p) => p.id))
+    const presses = m.presses.map((p) => {
+      const amount = pendingAmounts.get(p.id)
+      if (amount == null) return p
+      if (amount === p.amount) {
+        pendingAmounts.delete(p.id)
+        return p
+      }
+      return { ...p, amount }
+    })
+    for (const [id, press] of pendingPresses) {
+      if (press.matchId !== m.id) continue
+      if (serverIds.has(id)) {
+        pendingPresses.delete(id)
+        continue
+      }
+      presses.push({ ...press, amount: pendingAmounts.get(id) ?? press.amount })
+    }
+    return { ...m, presses }
+  })
 }
 
 function sumRange(holes: (number | null)[], start: number, end: number): number | null {

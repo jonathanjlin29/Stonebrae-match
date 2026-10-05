@@ -26,8 +26,10 @@ export function OfflineStatus() {
   if (online && queued === 0) return null
   return (
     <div role="status" className="fixed inset-x-3 bottom-3 z-50 flex items-center justify-between gap-3 liquid-glass rounded-2xl px-4 py-3 text-xs sm:inset-x-auto sm:right-4 sm:w-auto">
-      <span className="font-semibold text-[var(--color-foreground)]">{online ? "Sync pending" : "Offline mode"}</span>
-      <span className="text-[var(--color-muted)]">{queued ? `${queued} change${queued === 1 ? "" : "s"} queued` : "Cached data available"}</span>
+      <span className="font-semibold text-[var(--color-foreground)]">{online ? "Syncing…" : "Offline mode"}</span>
+      <span className="text-[var(--color-muted)]">
+        {queued ? `${queued} change${queued === 1 ? "" : "s"} saved on this phone` : "Showing saved data"}
+      </span>
     </div>
   )
 }

@@ -130,11 +130,14 @@ export async function addPress(
   startHole: number,
   initiatedBy: "A" | "B",
   amount: number,
+  pressId?: string,
 ) {
   const rows = await sql`SELECT presses FROM matches WHERE id = ${matchId}`
   const presses = (rows[0]?.presses ?? []) as any[]
+  // Client-generated ids make retries safe: a press that already landed is not added twice.
+  if (pressId && presses.some((p) => p.id === pressId)) return { ok: true }
   presses.push({
-    id: `p${Date.now()}`,
+    id: pressId || `p${Date.now()}`,
     matchId,
     scope,
     startHole,

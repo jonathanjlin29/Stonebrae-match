@@ -7,7 +7,7 @@ const handlers = {
   createRound: (payload: any) => createRound(payload),
   saveScore: (payload: any) => saveScore(payload.roundId, payload.playerId, payload.hole, payload.strokes),
   addPress: (payload: any) =>
-    addPress(payload.roundId, payload.matchId, payload.scope, payload.startHole, payload.initiatedBy, payload.amount),
+    addPress(payload.roundId, payload.matchId, payload.scope, payload.startHole, payload.initiatedBy, payload.amount, payload.pressId),
   updatePressAmount: (payload: any) =>
     updatePressAmount(payload.roundId, payload.matchId, payload.pressId, payload.amount),
   completeRound: (payload: any) => completeRound(payload.roundId),
