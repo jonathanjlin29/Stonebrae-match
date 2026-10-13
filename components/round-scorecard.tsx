@@ -1161,7 +1161,7 @@ function StatusRow({
         ? "bg-[var(--color-primary)]/10"
         : "bg-[var(--color-surface-2)]"
   return (
-    <div className={`flex h-8 items-center justify-between gap-1 overflow-hidden rounded-lg px-2 transition-colors sm:h-11 sm:rounded-xl sm:px-3 ${tone}`}>
+    <div className={`flex h-[29px] items-center justify-between gap-1 overflow-hidden rounded-lg px-2 transition-colors sm:h-[36px] sm:rounded-xl sm:px-3 ${tone}`}>
       <div className="min-w-0">
         <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--color-muted)] sm:text-[10px]">{label}</p>
         <p className="truncate font-display text-xs tracking-tight sm:text-sm">{value}</p>
