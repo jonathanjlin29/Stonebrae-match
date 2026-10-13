@@ -1265,9 +1265,11 @@ function HoleSquares({
           <span
             key={hole}
             title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
-            className={`block h-2 w-2 shrink-0 rounded-[2px] ${tone}`}
-          />
-        )
+  className={`flex h-2 min-w-2 shrink-0 items-center justify-center rounded-[2px] px-px text-[4px] font-bold leading-none tabular text-[var(--color-primary-foreground)] ${tone}`}
+  >
+  {hole + 1}
+  </span>
+  )
       })}
     </div>
   )
