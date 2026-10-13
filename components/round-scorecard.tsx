@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
   import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown, Bird, Pencil } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
 import { saveScoreOffline, addPressOffline, completeRoundOffline, updatePressAmountOffline } from "@/lib/offline-actions"
-import { cachePage } from "@/lib/offline-store"
+import { cachePage, getQueuedMutations } from "@/lib/offline-store"
 import {
   computeMatchMoney,
   computeMatchStatus,
@@ -79,8 +79,34 @@ export function RoundScorecard({
   // but preserve any cell that's still being edited/saved so in-flight input isn't overwritten.
   useEffect(() => {
     setScores((prev) => mergeScores(round.scores, prev, dirtyRef.current))
-    setMatches(round.matches)
+    setMatches((prev) => mergeMatches(round.matches, prev))
   }, [round])
+
+  // After a reload, scores still waiting in the offline queue aren't in the server data yet.
+  // Re-apply them so a refresh never shows older numbers than what was typed on this device.
+  useEffect(() => {
+    let cancelled = false
+    void getQueuedMutations().then((queued) => {
+      if (cancelled) return
+      const pending = queued.filter(
+        (m) => m.action === "saveScore" && (m.payload as { roundId?: number })?.roundId === round.id,
+      )
+      if (pending.length === 0) return
+      setScores((prev) => {
+        const next = clone(prev)
+        for (const m of pending) {
+          const { playerId, hole, strokes } = m.payload as { playerId: number; hole: number; strokes: number | null }
+          if (!next[playerId]) next[playerId] = Array(18).fill(null)
+          next[playerId][hole] = strokes
+          dirtyRef.current.add(`${playerId}:${hole}`)
+        }
+        return next
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [round.id])
 
   // Keep a local copy of the round so an offline direct visit to this page (or the shared public
   // link) can still render the last known scores instead of an empty shell.
@@ -1308,23 +1334,40 @@ function clone(s: Scores): Scores {
 // background refresh that started fetching before that save finished can still land afterward
 // carrying pre-save data, and trusting "my save promise resolved" timing over "the data I just
 // received matches" is what let a stale refresh silently wipe out just-typed scores.
+// Local data is authoritative: a score already on this device is never replaced by server data.
+// The server only fills cells that are still empty here. A cell the user deliberately cleared stays
+// cleared (via the dirty set) until the server agrees, so a stale response can't resurrect it.
 function mergeScores(server: Scores, local: Scores, dirty: Set<string>): Scores {
-  const out = clone(server)
-  for (const key of dirty) {
-    const [pidStr, holeStr] = key.split(":")
-    const pid = Number(pidStr)
-    const hole = Number(holeStr)
-    const localValue = local[pid]?.[hole] ?? null
-    const serverValue = out[pid]?.[hole] ?? null
-    if (serverValue === localValue) {
-      // The server has caught up to what's on screen; safe to stop overriding this cell.
-      dirty.delete(key)
-      continue
-    }
+  const out = clone(local)
+  const playerIds = new Set([...Object.keys(server), ...Object.keys(local)].map(Number))
+  for (const pid of playerIds) {
     if (!out[pid]) out[pid] = Array(18).fill(null)
-    out[pid][hole] = localValue
+    for (let hole = 0; hole < 18; hole++) {
+      const key = `${pid}:${hole}`
+      const localValue = local[pid]?.[hole] ?? null
+      const serverValue = server[pid]?.[hole] ?? null
+      if (dirty.has(key)) {
+        if (serverValue === localValue) dirty.delete(key)
+        continue
+      }
+      if (localValue == null && serverValue != null) out[pid][hole] = serverValue
+    }
   }
   return out
+}
+
+// Keep presses created on this device that the server hasn't returned yet.
+function mergeMatches(server: Match[], local: Match[]): Match[] {
+  return server.map((sm) => {
+    const lm = local.find((m) => m.id === sm.id)
+    if (!lm) return sm
+    const pendingPresses = lm.presses.filter(
+      (lp) =>
+        lp.id.startsWith("local-") &&
+        !sm.presses.some((sp) => sp.scope === lp.scope && sp.startHole === lp.startHole),
+    )
+    return pendingPresses.length ? { ...sm, presses: [...sm.presses, ...pendingPresses] } : sm
+  })
 }
 
 function sumRange(holes: (number | null)[], start: number, end: number): number | null {
