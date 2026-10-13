@@ -60,6 +60,8 @@ export function RoundScorecard({
   // Cells the user has typed into but that haven't been confirmed saved yet. A refetch that lands
   // mid-edit must not clobber these, or the score the user just typed appears to "delete itself."
   const dirtyRef = useRef<Set<string>>(new Set())
+  // Matches/presses removed on this device, so a stale server response can't bring them back.
+  const removedRef = useRef<RemovedLocally>({ matchIds: new Set(), pressKeys: new Set() })
 
   const players = round.players.map((p) => ({
     id: p.id,
@@ -79,7 +81,7 @@ export function RoundScorecard({
   // but preserve any cell that's still being edited/saved so in-flight input isn't overwritten.
   useEffect(() => {
     setScores((prev) => mergeScores(round.scores, prev, dirtyRef.current))
-    setMatches((prev) => mergeMatches(round.matches, prev))
+    setMatches((prev) => mergeMatches(round.matches, prev, removedRef.current))
   }, [round])
 
   // After a reload, scores still waiting in the offline queue aren't in the server data yet.
@@ -120,7 +122,7 @@ export function RoundScorecard({
     if (!isActive) return
     const interval = setInterval(() => {
       router.refresh()
-    }, 30 * 1000)
+    }, 5 * 60 * 1000)
     return () => clearInterval(interval)
   }, [isActive, router])
 
@@ -381,9 +383,19 @@ export function RoundScorecard({
               onEditingChange={(open) => setEditingMatchId(open ? m.id : null)}
               currentPlayerId={currentPlayerId}
               onPress={pressScope}
-              onSaved={(updated) => setMatches((prev) => prev.map((mm) => (mm.id === updated.id ? updated : mm)))}
-              onDeleted={(id) => {
-                setMatches((prev) => prev.filter((mm) => mm.id !== id))
+                onSaved={(updated) => {
+                  for (const p of m.presses) {
+                    const stillThere = updated.presses.some(
+                      (u) => u.id === p.id || (u.scope === p.scope && u.startHole === p.startHole),
+                    )
+                    if (!stillThere) removedRef.current.pressKeys.add(pressKey(m.id, p))
+                  }
+                  for (const u of updated.presses) removedRef.current.pressKeys.delete(pressKey(m.id, u))
+                  setMatches((prev) => prev.map((mm) => (mm.id === updated.id ? updated : mm)))
+                }}
+                onDeleted={(id) => {
+                  removedRef.current.matchIds.add(id)
+                  setMatches((prev) => prev.filter((mm) => mm.id !== id))
                 setEditingMatchId(null)
               }}
             />
@@ -954,16 +966,16 @@ function PressRow({
   const statusVal = status.holes.length ? status.finalStatusA * teamSign : 0
   const statusTone =
     statusVal < 0
-      ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
+      ? "[--chip-tint:var(--color-danger)]"
       : statusVal > 0
-        ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
-        : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
+        ? "[--chip-tint:var(--color-primary)]"
+        : "[--chip-tint:var(--color-match-square)]"
 
   const scopeShort = press.scope === "overall" ? "O" : press.scope === "front" ? "F" : "B"
   const scopeName = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front" : "Back"
 
   return (
-    <div className={`rounded-lg border-l-2 px-1.5 py-1 text-[8px] leading-tight transition-colors ${statusTone}`}>
+    <div className={`liquid-glass-chip rounded-lg px-1.5 py-1 text-[8px] leading-tight transition-colors ${statusTone}`}>
       <div className="flex items-center gap-1 font-semibold">
         <span className="text-[10px] font-bold uppercase text-[var(--color-gold)]">{isAloha ? "Aloha" : "Press"}</span>
         {!isAloha && (
@@ -1358,18 +1370,37 @@ function mergeScores(server: Scores, local: Scores, dirty: Set<string>): Scores 
   return out
 }
 
-// Keep presses created on this device that the server hasn't returned yet.
-function mergeMatches(server: Match[], local: Match[]): Match[] {
-  return server.map((sm) => {
-    const lm = local.find((m) => m.id === sm.id)
-    if (!lm) return sm
-    const pendingPresses = lm.presses.filter(
-      (lp) =>
-        lp.id.startsWith("local-") &&
-        !sm.presses.some((sp) => sp.scope === lp.scope && sp.startHole === lp.startHole),
+type RemovedLocally = { matchIds: Set<number>; pressKeys: Set<string> }
+
+function pressKey(matchId: number, p: { scope: string; startHole: number }) {
+  return `${matchId}:${p.scope}:${p.startHole}`
+}
+
+// Local match data is authoritative: anything already on this device (matches, presses, edited
+// amounts) is kept as-is. The server can only add matches/presses this device doesn't know about,
+// and never resurrects something removed here. A temporary local press id is swapped for the
+// server's real id once it shows up, so later edits target the saved row.
+function mergeMatches(server: Match[], local: Match[], removed: RemovedLocally): Match[] {
+  const merged: Match[] = local.map((lm) => {
+    const sm = server.find((m) => m.id === lm.id)
+    if (!sm) return lm
+    const presses = lm.presses.map((lp) => {
+      if (!lp.id.startsWith("local-")) return lp
+      const saved = sm.presses.find((sp) => sp.scope === lp.scope && sp.startHole === lp.startHole)
+      return saved ? { ...lp, id: saved.id } : lp
+    })
+    const extra = sm.presses.filter(
+      (sp) =>
+        !removed.pressKeys.has(pressKey(lm.id, sp)) &&
+        !presses.some((lp) => lp.id === sp.id || (lp.scope === sp.scope && lp.startHole === sp.startHole)),
     )
-    return pendingPresses.length ? { ...sm, presses: [...sm.presses, ...pendingPresses] } : sm
+    return extra.length ? { ...lm, presses: [...presses, ...extra] } : { ...lm, presses }
   })
+  for (const sm of server) {
+    if (removed.matchIds.has(sm.id) || merged.some((m) => m.id === sm.id)) continue
+    merged.push({ ...sm, presses: sm.presses.filter((sp) => !removed.pressKeys.has(pressKey(sm.id, sp))) })
+  }
+  return merged
 }
 
 function sumRange(holes: (number | null)[], start: number, end: number): number | null {
