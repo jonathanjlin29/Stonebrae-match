@@ -927,7 +927,7 @@ function PressRow({
   return (
     <div className={`rounded-lg border-l-2 px-1.5 py-1 text-[8px] leading-tight transition-colors ${statusTone}`}>
       <div className="flex items-center gap-1 font-semibold">
-        <span className="font-bold uppercase text-[var(--color-gold)]">Press</span>
+        <span className="text-[10px] font-bold uppercase text-[var(--color-gold)]">Press</span>
         <span className="text-[var(--color-muted)]" title={scopeName}>
           {scopeShort}
         </span>
@@ -935,7 +935,7 @@ function PressRow({
           <PressAmountEditor roundId={roundId} matchId={match.id} press={press} />
         </div>
       </div>
-      <p className="mt-0.5 flex items-center gap-1 font-display tracking-tight">
+      <p className="mt-0.5 flex items-center gap-1 text-[10px] font-normal tracking-tight">
         {label}
         {status.frozen && <Lock className="h-2 w-2 text-[var(--color-gold)]" aria-label="Frozen" />}
       </p>
