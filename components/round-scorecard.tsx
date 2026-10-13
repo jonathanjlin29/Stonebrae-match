@@ -919,9 +919,8 @@ function PressRow({
   const scopeLabel = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front Nine" : "Back Nine"
 
   return (
-    <div className={`rounded-xl border-l-4 px-2.5 py-2 transition-colors ${statusTone}`}>
+    <div className={`rounded-xl border-l-4 px-2.5 py-2 pr-[84px] transition-colors ${statusTone}`}>
       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
-        <Swords className="h-3 w-3 shrink-0 text-[var(--color-gold)]" />
         <Badge className="bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]">Press</Badge>
           <span className="text-[var(--color-muted)]">{scopeLabel}</span>
         <div className="ml-auto flex items-center gap-1.5">
@@ -1139,7 +1138,7 @@ function StatusRow({
     <div className={`flex items-center justify-between rounded-xl px-3 py-2 transition-colors ${tone}`}>
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-        <p className="font-display text-base tracking-tight">{value}</p>
+        <p className="font-display text-sm tracking-tight">{value}</p>
       </div>
       {frozen ? (
         <Badge
