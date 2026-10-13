@@ -832,7 +832,7 @@ function MatchCard({
                 <button
                   key={s}
                   onClick={() => openPress(s)}
-                  className={`flex-1 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
+                  className={`flex-1 rounded-full px-4 py-2.5 text-[9px] font-semibold transition-colors ${
                     s === "aloha"
                       ? "bg-[var(--color-gold)]/15 text-[var(--color-gold)] ring-1 ring-[var(--color-gold)]/40 hover:bg-[var(--color-gold)]/25"
                       : "bg-[var(--color-surface-2)] hover:bg-[var(--color-border)]"
@@ -850,8 +850,8 @@ function MatchCard({
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold">
+              <div className="flex flex-wrap items-center gap-2 text-[9px]">
+                <span className="font-semibold">
                   {pressChoice === "aloha" ? "Aloha on 18 for" : `Press ${scopeName(pressChoice)} for`}
                 </span>
                 <span className="text-[var(--color-muted)]">$</span>
@@ -864,13 +864,13 @@ function MatchCard({
                 />
                 <button
                   onClick={confirmPress}
-                  className="rounded-full bg-[var(--color-gold)] px-4 py-2 text-sm font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
+                  className="rounded-full bg-[var(--color-gold)] px-4 py-2 font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
                 >
                   Confirm
                 </button>
                 <button
                   onClick={closePress}
-                  className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+                  className="rounded-full px-3 py-2 font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
                 >
                   Cancel
                 </button>
