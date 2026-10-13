@@ -975,7 +975,7 @@ function PressRow({
   const scopeName = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front" : "Back"
 
   return (
-    <div className={`liquid-glass-chip rounded-lg px-1.5 py-1 text-[8px] leading-tight transition-colors ${statusTone}`}>
+    <div className={`liquid-glass-chip rounded-lg sm:rounded-xl px-1.5 py-1 text-[8px] leading-tight transition-colors ${statusTone}`}>
       <div className="flex items-center gap-1 font-semibold">
         <span className="text-[10px] font-bold uppercase text-[var(--color-gold)]">{isAloha ? "Aloha" : "Press"}</span>
         {!isAloha && (
