@@ -36,8 +36,10 @@ export type Match = {
   type: "singles" | "team"
   teamA: number[]
   teamB: number[]
-  nineBet: number
+  nineBet: number // front nine bet
+  backBet: number
   overallBet: number
+  straightUp: boolean // no handicap strokes in this match
   presses: Press[]
   results: MatchResults
   money: Record<string, number>

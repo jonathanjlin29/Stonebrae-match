@@ -2,11 +2,10 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-  import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown, Bird } from "lucide-react"
+  import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown, Bird, Pencil } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
 import { saveScoreOffline, addPressOffline, completeRoundOffline, updatePressAmountOffline } from "@/lib/offline-actions"
 import { cachePage } from "@/lib/offline-store"
-import { updateMatchBetsAdmin } from "@/app/actions/admin"
 import {
   computeMatchMoney,
   computeMatchStatus,
@@ -16,7 +15,14 @@ import {
   birdieStreakEndingAt,
   relToPar,
   getStrokesGiven,
+  backBetOf,
+  defaultPressAmount,
+  nextUnplayedHole,
+  pressEndHole,
+  pressStartRange,
 } from "@/lib/nassau"
+import { MatchEditor } from "./match-editor"
+import { MatchCompactList } from "./match-compact"
 import { computeSettlement } from "@/lib/settlement"
 import { COURSE, type Hole } from "@/lib/course"
 import type { Match, Press, Round, Scores } from "@/lib/types"
@@ -46,6 +52,8 @@ export function RoundScorecard({
   const [completing, setCompleting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState<Tab>("scorecard")
+  const [matchView, setMatchView] = useState<"cards" | "compact">("cards")
+  const [editingMatchId, setEditingMatchId] = useState<number | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -65,6 +73,7 @@ export function RoundScorecard({
   const lowestHandicap = players.length > 0 ? Math.min(...players.map((p) => p.handicap)) : 0
   const isActive = round.status === "active"
   const canEditScores = !isPublicView && (isActive || isAdmin)
+  const canEditMatches = !isPublicView && (isAdmin || currentPlayerId != null)
 
   // Keep local state in sync whenever the server component re-fetches (poll or manual refresh),
   // but preserve any cell that's still being edited/saved so in-flight input isn't overwritten.
@@ -163,19 +172,15 @@ export function RoundScorecard({
     scope: "front" | "back" | "overall",
     amount: number,
   ): { ok: true } | { ok: false; reason: string } {
-    const [start_, end] = scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
+    const [start_, end] = pressStartRange(scope)
+    const startHole = nextUnplayedHole(match, scores, start_, end)
+    if (startHole == null) {
+      return { ok: false, reason: "There are no holes left to press on this segment." }
+    }
     const status = computeSegmentStatus(match, scores, players, start_, end, courseHoles)
-    if (status.holes.length === 0) {
-      return { ok: false, reason: "No holes have been played on this nine yet." }
-    }
-    if (status.frozen || status.holes.length === end - start_ + 1) {
-      return { ok: false, reason: "This segment is already closed out — there are no holes left to press." }
-    }
-    if (status.finalStatusA === 0) {
-      return { ok: false, reason: "You can't press while the match is all square." }
-    }
-    const initiatedBy = status.finalStatusA > 0 ? "B" : "A"
-    const startHole = start_ + status.holes.length
+    const viewerSide: "A" | "B" = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
+    const initiatedBy: "A" | "B" =
+      status.holes.length > 0 && status.finalStatusA !== 0 ? (status.finalStatusA > 0 ? "B" : "A") : viewerSide
     start(async () => {
       const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy, amount)
       if (res.ok) {
@@ -306,24 +311,57 @@ export function RoundScorecard({
         <MoneyTab matches={matches} scores={scores} players={players} totals={totals} courseHoles={courseHoles} />
       </section>
 
-      <section className={`mb-6 grid gap-3 ${tab === "matches" ? "" : "hidden"}`}>
-        {matches.map((m) => (
-          <MatchCard
-            key={m.id}
-            roundId={round.id}
-            match={m}
+      <section className={`mb-6 flex flex-col gap-3 ${tab === "matches" ? "" : "hidden"}`}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm text-[var(--color-muted)]">
+            {matches.length} {matches.length === 1 ? "match" : "matches"}
+          </p>
+          <SegmentedControl
+            value={matchView}
+            onChange={setMatchView}
+            options={[
+              { value: "cards", label: "Cards" },
+              { value: "compact", label: "Compact" },
+            ]}
+          />
+        </div>
+        {matchView === "compact" && (
+          <MatchCompactList
+            matches={matches}
             scores={scores}
             players={players}
             courseHoles={courseHoles}
-            isActive={isActive}
-            isAdmin={isAdmin}
             currentPlayerId={currentPlayerId}
-            onPress={pressScope}
-            onBetsChanged={(matchId, nineBet, overallBet) =>
-              setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
-            }
+            canEdit={canEditMatches}
+            onEdit={(id) => {
+              setEditingMatchId(id)
+              setMatchView("cards")
+            }}
           />
-        ))}
+        )}
+        <div className={`grid gap-3 ${matchView === "cards" ? "" : "hidden"}`}>
+          {matches.map((m) => (
+            <MatchCard
+              key={m.id}
+              roundId={round.id}
+              match={m}
+              scores={scores}
+              players={players}
+              courseHoles={courseHoles}
+              isActive={isActive}
+              canEdit={canEditMatches}
+              editing={editingMatchId === m.id}
+              onEditingChange={(open) => setEditingMatchId(open ? m.id : null)}
+              currentPlayerId={currentPlayerId}
+              onPress={pressScope}
+              onSaved={(updated) => setMatches((prev) => prev.map((mm) => (mm.id === updated.id ? updated : mm)))}
+              onDeleted={(id) => {
+                setMatches((prev) => prev.filter((mm) => mm.id !== id))
+                setEditingMatchId(null)
+              }}
+            />
+          ))}
+        </div>
       </section>
 
       <Card className={`mb-6 overflow-x-auto p-0 ${tab === "scorecard" ? "hidden sm:block" : "hidden"}`}>
@@ -611,10 +649,13 @@ function MatchCard({
   players,
   courseHoles,
   isActive,
-  isAdmin,
+  canEdit,
+  editing,
+  onEditingChange,
   currentPlayerId,
   onPress,
-  onBetsChanged,
+  onSaved,
+  onDeleted,
 }: {
   roundId: number
   match: Match
@@ -622,17 +663,20 @@ function MatchCard({
   players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
   courseHoles: Hole[]
   isActive: boolean
-  isAdmin: boolean
+  canEdit: boolean
+  editing: boolean
+  onEditingChange: (open: boolean) => void
   currentPlayerId: number | null
   onPress: (
     match: Match,
     scope: "front" | "back" | "overall",
     amount: number,
   ) => { ok: true } | { ok: false; reason: string }
-  onBetsChanged: (matchId: number, nineBet: number, overallBet: number) => void
+  onSaved: (match: Match) => void
+  onDeleted: (matchId: number) => void
 }) {
   const [pressOpen, setPressOpen] = useState(false)
-  const [pressChoice, setPressChoice] = useState<"nine" | "overall" | null>(null)
+  const [pressChoice, setPressChoice] = useState<"front" | "back" | "overall" | null>(null)
   const [pressAmount, setPressAmount] = useState("")
   const [pressError, setPressError] = useState<string | null>(null)
 
@@ -664,16 +708,15 @@ function MatchCard({
       ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
       : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const canPressFront = isActive && front.holes.length > 0 && front.holes.length < 9 && !front.frozen
-  const canPressBack =
-    isActive && back.holes.length > 0 && back.holes.length < 9 && front.holes.length === 9 && !back.frozen
-  const canPressOverall = isActive && overall.holes.length > 0 && overall.holes.length < 18 && !overall.frozen
-  const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
-  const canPressAny = currentNine != null || canPressOverall
+  const pressable = (["front", "back", "overall"] as const).filter(
+    (s) => isActive && nextUnplayedHole(match, scores, ...pressStartRange(s)) != null,
+  )
+  const canPressAny = pressable.length > 0
+  const scopeName = (s: "front" | "back" | "overall") => (s === "front" ? "Front Nine" : s === "back" ? "Back Nine" : "Overall")
 
-  function openPress(choice: "nine" | "overall") {
+  function openPress(choice: "front" | "back" | "overall") {
     setPressChoice(choice)
-    setPressAmount(String(choice === "overall" ? match.overallBet : match.nineBet))
+    setPressAmount(String(defaultPressAmount(match, choice)))
     setPressError(null)
   }
 
@@ -686,8 +729,7 @@ function MatchCard({
 
   function confirmPress() {
     if (!pressChoice) return
-    const scope = pressChoice === "overall" ? "overall" : currentNine
-    if (!scope) return
+    const scope = pressChoice
     const amount = Math.round(Math.max(0, Number(pressAmount) || 0))
     const result = onPress(match, scope, amount)
     if (result.ok) {
@@ -716,13 +758,22 @@ function MatchCard({
             ))}
           </div>
         </div>
-        {isAdmin ? (
-          <BetEditor match={match} onSaved={onBetsChanged} />
-        ) : (
+        <div className="flex items-center gap-1.5">
+          {match.straightUp && <Badge className="text-[10px]">Straight up</Badge>}
           <Badge className="tabular">
-            ${match.nineBet}/9 · ${match.overallBet} ovr
+            ${match.nineBet} F · ${backBetOf(match)} B · ${match.overallBet} ovr
           </Badge>
-        )}
+          {canEdit && !editing && (
+            <button
+              onClick={() => onEditingChange(true)}
+              aria-label="Edit match"
+              title="Edit match"
+              className="rounded-full p-1.5 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
       <div className="grid gap-1.5 sm:grid-cols-3">
         <div className="grid gap-1">
@@ -765,22 +816,15 @@ function MatchCard({
             </button>
           ) : !pressChoice ? (
             <div className="flex flex-wrap items-center gap-2">
-              {currentNine && (
+              {pressable.map((s) => (
                 <button
-                  onClick={() => openPress("nine")}
+                  key={s}
+                  onClick={() => openPress(s)}
                   className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
                 >
-                  Press {currentNine === "front" ? "Front" : "Back"} Nine
+                  Press {scopeName(s)}
                 </button>
-              )}
-              {canPressOverall && (
-                <button
-                  onClick={() => openPress("overall")}
-                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
-                >
-                  Press Overall
-                </button>
-              )}
+              ))}
               <button
                 onClick={closePress}
                 className="rounded-full px-4 py-2.5 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
@@ -792,7 +836,7 @@ function MatchCard({
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold">
-                  Press {pressChoice === "overall" ? "Overall" : `${currentNine === "front" ? "Front" : "Back"} Nine`} for
+                  Press {scopeName(pressChoice)} for
                 </span>
                 <span className="text-[var(--color-muted)]">$</span>
                 <input
@@ -824,53 +868,17 @@ function MatchCard({
           )}
         </div>
       )}
+      {editing && (
+        <MatchEditor
+          roundId={roundId}
+          match={match}
+          players={players}
+          onSaved={onSaved}
+          onDeleted={onDeleted}
+          onClose={() => onEditingChange(false)}
+        />
+      )}
     </Card>
-  )
-}
-
-function BetEditor({
-  match,
-  onSaved,
-}: {
-  match: Match
-  onSaved: (matchId: number, nineBet: number, overallBet: number) => void
-}) {
-  const [nineBet, setNineBet] = useState(String(match.nineBet))
-  const [overallBet, setOverallBet] = useState(String(match.overallBet))
-  const [, start] = useTransition()
-
-  function commit() {
-    const n = Math.round(Math.max(0, Number(nineBet) || 0))
-    const o = Math.round(Math.max(0, Number(overallBet) || 0))
-    setNineBet(String(n))
-    setOverallBet(String(o))
-    if (n === match.nineBet && o === match.overallBet) return
-    start(async () => {
-      const res = await updateMatchBetsAdmin(match.id, n, o)
-      if (res.ok) onSaved(match.id, n, o)
-    })
-  }
-
-  return (
-    <div className="flex items-center gap-1 text-sm font-semibold tabular">
-      <span className="text-[var(--color-muted)]">$</span>
-      <input
-        type="number"
-        value={nineBet}
-        onChange={(e) => setNineBet(e.target.value)}
-        onBlur={commit}
-        className="h-7 w-12 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1 text-center outline-none focus:border-[var(--color-primary)]"
-      />
-      <span className="text-[var(--color-muted)]">/9 · $</span>
-      <input
-        type="number"
-        value={overallBet}
-        onChange={(e) => setOverallBet(e.target.value)}
-        onBlur={commit}
-        className="h-7 w-12 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1 text-center outline-none focus:border-[var(--color-primary)]"
-      />
-      <span className="text-[var(--color-muted)]">ovr</span>
-    </div>
   )
 }
 
@@ -891,7 +899,7 @@ function PressRow({
   courseHoles: Hole[]
   currentPlayerId: number | null
 }) {
-  const end = press.scope === "front" ? 8 : 17
+  const end = pressEndHole(press.scope)
   const status = computeSegmentStatus(match, scores, players, press.startHole, end, courseHoles)
   const label = status.holes.length
     ? status.frozen

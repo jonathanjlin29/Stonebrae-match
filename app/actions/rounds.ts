@@ -8,13 +8,27 @@ import type { Match, Player, Round, RoundPlayer, Scores } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 import { getPlayers } from "./players"
 import { getCourseHoles } from "./courses"
+import { isStraightUpMatchup } from "@/lib/match-rules"
 
 type MatchConfig = {
   type: "singles" | "team"
   teamA: number[]
   teamB: number[]
   nineBet: number
+  backBet?: number
   overallBet: number
+  straightUp?: boolean
+}
+
+function cleanBet(n: unknown, fallback = 0): number {
+  const v = Number(n)
+  return Number.isFinite(v) ? Math.max(0, Math.round(v)) : fallback
+}
+
+async function straightUpFor(teamA: number[], teamB: number[], requested: boolean | undefined) {
+  if (requested) return true
+  const players = await getPlayers()
+  return isStraightUpMatchup(teamA, teamB, players)
 }
 
 export async function createRound(input: {
@@ -39,9 +53,12 @@ export async function createRound(input: {
   }
 
   for (const m of input.matches) {
+    const nineBet = cleanBet(m.nineBet)
+    const backBet = cleanBet(m.backBet, nineBet)
+    const straightUp = await straightUpFor(m.teamA, m.teamB, m.straightUp)
     await sql`
-      INSERT INTO matches (round_id, type, team_a, team_b, nine_bet, overall_bet)
-      VALUES (${roundId}, ${m.type}, ${JSON.stringify(m.teamA)}, ${JSON.stringify(m.teamB)}, ${m.nineBet}, ${m.overallBet})`
+      INSERT INTO matches (round_id, type, team_a, team_b, nine_bet, back_bet, overall_bet, straight_up)
+      VALUES (${roundId}, ${m.type}, ${JSON.stringify(m.teamA)}, ${JSON.stringify(m.teamB)}, ${nineBet}, ${backBet}, ${cleanBet(m.overallBet)}, ${straightUp})`
   }
 
   revalidatePath("/")
@@ -88,7 +105,9 @@ export async function getRound(id: number): Promise<Round | null> {
     teamA: row.team_a,
     teamB: row.team_b,
     nineBet: Number(row.nine_bet),
+    backBet: row.back_bet == null ? Number(row.nine_bet) : Number(row.back_bet),
     overallBet: Number(row.overall_bet),
+    straightUp: Boolean(row.straight_up),
     presses: row.presses ?? [],
     results: row.results ?? { front: null, back: null, overall: null, pressResults: {} },
     money: row.money ?? {},
@@ -134,7 +153,7 @@ export async function addPress(
   const rows = await sql`SELECT presses FROM matches WHERE id = ${matchId}`
   const presses = (rows[0]?.presses ?? []) as any[]
   presses.push({
-    id: `p${Date.now()}`,
+    id: `p${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
     matchId,
     scope,
     startHole,
@@ -157,6 +176,80 @@ export async function updatePressAmount(roundId: number, matchId: number, pressI
   return { ok: true }
 }
 
+export type MatchEdit = {
+  type: "singles" | "team"
+  teamA: number[]
+  teamB: number[]
+  nineBet: number
+  backBet: number
+  overallBet: number
+  straightUp: boolean
+  presses: { id: string; scope: "front" | "back" | "overall"; startHole: number; initiatedBy: "A" | "B"; amount: number }[]
+}
+
+async function canEditRounds() {
+  return (await getIsAdmin()) || (await getCurrentPlayerId()) != null
+}
+
+export async function updateMatch(
+  roundId: number,
+  matchId: number,
+  edit: MatchEdit,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!(await canEditRounds())) return { ok: false, error: "Sign in to edit matches." }
+  const teamA = [...new Set(edit.teamA.map(Number))]
+  const teamB = [...new Set(edit.teamB.map(Number))]
+  if (teamA.length === 0 || teamB.length === 0) return { ok: false, error: "Both sides need at least one player." }
+  if (teamA.some((id) => teamB.includes(id))) return { ok: false, error: "A player can't be on both sides." }
+
+  const roster = await sql`SELECT player_id FROM round_players WHERE round_id = ${roundId}`
+  const inRound = new Set(roster.map((r: any) => r.player_id as number))
+  if ([...teamA, ...teamB].some((id) => !inRound.has(id))) return { ok: false, error: "Players must be in this round." }
+
+  const type = teamA.length === 1 && teamB.length === 1 ? "singles" : "team"
+  const presses = edit.presses.map((p) => {
+    const [lo, hi] = p.scope === "front" ? [0, 8] : p.scope === "back" ? [9, 17] : [0, 17]
+    return {
+      id: String(p.id),
+      matchId,
+      scope: p.scope,
+      startHole: Math.min(hi, Math.max(lo, Math.round(Number(p.startHole) || lo))),
+      initiatedBy: p.initiatedBy === "B" ? "B" : "A",
+      amount: cleanBet(p.amount),
+    }
+  })
+  const nineBet = cleanBet(edit.nineBet)
+  const straightUp = await straightUpFor(teamA, teamB, edit.straightUp)
+
+  const res = await sql`
+    UPDATE matches SET
+      type = ${type},
+      team_a = ${JSON.stringify(teamA)},
+      team_b = ${JSON.stringify(teamB)},
+      nine_bet = ${nineBet},
+      back_bet = ${cleanBet(edit.backBet, nineBet)},
+      overall_bet = ${cleanBet(edit.overallBet)},
+      straight_up = ${straightUp},
+      presses = ${JSON.stringify(presses)}
+    WHERE id = ${matchId} AND round_id = ${roundId}
+    RETURNING id`
+  if (!res[0]) return { ok: false, error: "Match not found." }
+
+  await recomputeRoundMoney(roundId)
+  revalidatePath(`/round/${roundId}`)
+  revalidatePath("/leaderboard")
+  return { ok: true }
+}
+
+export async function deleteMatch(roundId: number, matchId: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!(await canEditRounds())) return { ok: false, error: "Sign in to edit matches." }
+  await sql`DELETE FROM matches WHERE id = ${matchId} AND round_id = ${roundId}`
+  await recomputeRoundMoney(roundId)
+  revalidatePath(`/round/${roundId}`)
+  revalidatePath("/leaderboard")
+  return { ok: true }
+}
+
 export async function recomputeRoundMoney(roundId: number) {
   const round = await getRound(roundId)
   if (!round) return
@@ -172,7 +265,7 @@ export async function recomputeRoundMoney(roundId: number) {
   for (const p of round.players) totals[p.id] = 0
 
   for (const m of round.matches) {
-    const { money, results } = computeMatchMoney(m, round.scores, playerList)
+    const { money, results } = computeMatchMoney(m, round.scores, playerList, round.holes)
     for (const [pid, amt] of Object.entries(money)) totals[Number(pid)] = (totals[Number(pid)] ?? 0) + amt
     await sql`UPDATE matches SET results = ${JSON.stringify(results)}, money = ${JSON.stringify(money)} WHERE id = ${m.id}`
   }
