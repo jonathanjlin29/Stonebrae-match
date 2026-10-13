@@ -171,9 +171,10 @@ export function RoundScorecard({
     match: Match,
     scope: "front" | "back" | "overall",
     amount: number,
+    fixedStartHole?: number,
   ): { ok: true } | { ok: false; reason: string } {
     const [start_, end] = pressStartRange(scope)
-    const startHole = nextUnplayedHole(match, scores, start_, end)
+    const startHole = fixedStartHole ?? nextUnplayedHole(match, scores, start_, end)
     if (startHole == null) {
       return { ok: false, reason: "There are no holes left to press on this segment." }
     }
@@ -671,12 +672,13 @@ function MatchCard({
     match: Match,
     scope: "front" | "back" | "overall",
     amount: number,
+    fixedStartHole?: number,
   ) => { ok: true } | { ok: false; reason: string }
   onSaved: (match: Match) => void
   onDeleted: (matchId: number) => void
 }) {
   const [pressOpen, setPressOpen] = useState(false)
-  const [pressChoice, setPressChoice] = useState<"front" | "back" | "overall" | null>(null)
+  const [pressChoice, setPressChoice] = useState<PressChoice | null>(null)
   const [pressAmount, setPressAmount] = useState("")
   const [pressError, setPressError] = useState<string | null>(null)
 
@@ -690,13 +692,13 @@ function MatchCard({
   const back = computeSegmentStatus(match, scores, players, 9, 17, courseHoles)
   const overall = computeSegmentStatus(match, scores, players, 0, 17, courseHoles)
 
-  const frontLabel = front.holes.length ? (front.frozen ? front.closeoutLabel! : getMatchStatusLabel(front.finalStatusA)) : "Not started"
-  const backLabel = back.holes.length ? (back.frozen ? back.closeoutLabel! : getMatchStatusLabel(back.finalStatusA)) : "Not started"
+  const frontLabel = front.holes.length ? (front.frozen ? front.closeoutLabel! : getMatchStatusLabel(front.finalStatusA)) : "N/A"
+  const backLabel = back.holes.length ? (back.frozen ? back.closeoutLabel! : getMatchStatusLabel(back.finalStatusA)) : "N/A"
   const overallLabel = overall.holes.length
     ? overall.frozen
       ? overall.closeoutLabel!
       : getMatchStatusLabel(overall.finalStatusA)
-    : "Not started"
+    : "N/A"
   const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
   const teamSign = currentTeam === "B" ? -1 : 1
   const frontStatus = front.holes.length ? front.finalStatusA * teamSign : 0
@@ -711,12 +713,17 @@ function MatchCard({
   const pressable = (["front", "back", "overall"] as const).filter(
     (s) => isActive && nextUnplayedHole(match, scores, ...pressStartRange(s)) != null,
   )
-  const canPressAny = pressable.length > 0
-  const scopeName = (s: "front" | "back" | "overall") => (s === "front" ? "Front Nine" : s === "back" ? "Back Nine" : "Overall")
+  const choices: PressChoice[] = [
+    ...pressable,
+    ...(isActive && nextUnplayedHole(match, scores, ...pressStartRange("back")) === ALOHA_HOLE ? (["aloha"] as const) : []),
+  ]
+  const canPressAny = choices.length > 0
+  const scopeName = (s: PressChoice) =>
+    s === "front" ? "Front Nine" : s === "back" ? "Back Nine" : s === "overall" ? "Overall" : "Aloha (18th)"
 
-  function openPress(choice: "front" | "back" | "overall") {
+  function openPress(choice: PressChoice) {
     setPressChoice(choice)
-    setPressAmount(String(defaultPressAmount(match, choice)))
+    setPressAmount(String(choice === "aloha" ? match.overallBet : defaultPressAmount(match, choice)))
     setPressError(null)
   }
 
@@ -729,9 +736,9 @@ function MatchCard({
 
   function confirmPress() {
     if (!pressChoice) return
-    const scope = pressChoice
     const amount = Math.round(Math.max(0, Number(pressAmount) || 0))
-    const result = onPress(match, scope, amount)
+    const result =
+      pressChoice === "aloha" ? onPress(match, "back", amount, ALOHA_HOLE) : onPress(match, pressChoice, amount)
     if (result.ok) {
       closePress()
     } else {
@@ -821,13 +828,17 @@ function MatchCard({
             </button>
           ) : !pressChoice ? (
             <div className="flex flex-wrap items-center gap-2">
-              {pressable.map((s) => (
+              {choices.map((s) => (
                 <button
                   key={s}
                   onClick={() => openPress(s)}
-                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
+                  className={`flex-1 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
+                    s === "aloha"
+                      ? "bg-[var(--color-gold)]/15 text-[var(--color-gold)] ring-1 ring-[var(--color-gold)]/40 hover:bg-[var(--color-gold)]/25"
+                      : "bg-[var(--color-surface-2)] hover:bg-[var(--color-border)]"
+                  }`}
                 >
-                  Press {scopeName(s)}
+                  {s === "aloha" ? "Aloha · 18th" : `Press ${scopeName(s)}`}
                 </button>
               ))}
               <button
@@ -841,7 +852,7 @@ function MatchCard({
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold">
-                  Press {scopeName(pressChoice)} for
+                  {pressChoice === "aloha" ? "Aloha on 18 for" : `Press ${scopeName(pressChoice)} for`}
                 </span>
                 <span className="text-[var(--color-muted)]">$</span>
                 <input
@@ -910,9 +921,10 @@ function PressRow({
     ? status.frozen
       ? status.closeoutLabel!
       : getMatchStatusLabel(status.finalStatusA)
-    : "Not started"
+    : "N/A"
   const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
   const teamSign = currentTeam === "B" ? -1 : 1
+  const isAloha = press.scope === "back" && press.startHole === ALOHA_HOLE
   const statusVal = status.holes.length ? status.finalStatusA * teamSign : 0
   const statusTone =
     statusVal < 0
@@ -927,19 +939,21 @@ function PressRow({
   return (
     <div className={`rounded-lg border-l-2 px-1.5 py-1 text-[8px] leading-tight transition-colors ${statusTone}`}>
       <div className="flex items-center gap-1 font-semibold">
-        <span className="text-[10px] font-bold uppercase text-[var(--color-gold)]">Press</span>
-        <span className="text-[var(--color-muted)]" title={scopeName}>
-          {scopeShort}
-        </span>
+        <span className="text-[10px] font-bold uppercase text-[var(--color-gold)]">{isAloha ? "Aloha" : "Press"}</span>
+        {!isAloha && (
+          <span className="text-[var(--color-muted)]" title={scopeName}>
+            {scopeShort}
+          </span>
+        )}
         <div className="ml-auto flex items-center">
           <PressAmountEditor roundId={roundId} matchId={match.id} press={press} />
         </div>
       </div>
-      <p className="mt-0.5 flex items-center gap-1 text-[10px] font-normal tracking-tight">
-        {label}
-        {status.frozen && <Lock className="h-2 w-2 text-[var(--color-gold)]" aria-label="Frozen" />}
-      </p>
-      <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-0.5" />
+      <div className="mt-0.5 flex items-center gap-1 text-[10px] font-normal tracking-tight">
+        <span className="shrink-0">{label}</span>
+        {status.frozen && <Lock className="h-2 w-2 shrink-0 text-[var(--color-gold)]" aria-label="Frozen" />}
+        <HoleSquares holes={status.holes} teamSign={teamSign} />
+      </div>
     </div>
   )
 }
@@ -1201,6 +1215,37 @@ function HoleTimeline({
   )
 }
 
+function HoleSquares({
+  holes,
+  teamSign,
+}: {
+  holes: { hole: number; holeWinner: "A" | "B" | "halved" }[]
+  teamSign: number
+}) {
+  if (holes.length === 0) return null
+  return (
+    <div className="flex min-w-0 flex-wrap gap-px" aria-label="Hole results">
+      {holes.map(({ hole, holeWinner }) => {
+        const outcome =
+          holeWinner === "halved" ? "push" : (holeWinner === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
+        const tone =
+          outcome === "won"
+            ? "bg-[var(--color-primary)]"
+            : outcome === "push"
+              ? "bg-[var(--color-match-square)]"
+              : "bg-[var(--color-danger)]"
+        return (
+          <span
+            key={hole}
+            title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
+            className={`h-1.5 w-1.5 rounded-[1px] ${tone}`}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 function CelebrationOverlay({
   celebration,
   onDismiss,
@@ -1242,6 +1287,11 @@ function CelebrationOverlay({
     </div>
   )
 }
+
+type PressChoice = "front" | "back" | "overall" | "aloha"
+
+// "Aloha" is a last-hole press: a back-nine press covering only the 18th (index 17), any amount.
+const ALOHA_HOLE = 17
 
 function clone(s: Scores): Scores {
   const out: Scores = {}
