@@ -136,6 +136,16 @@ body {
       linear-gradient(315deg, color-mix(in srgb, var(--color-primary) 10%, transparent) 0%, transparent 45%);
   }
 
+  /* Small tinted glass chip (press rows). Set --chip-tint to color the glass and left edge. */
+  .liquid-glass-chip {
+    --chip-tint: var(--color-match-square);
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--color-foreground) 10%, transparent) 0%, transparent 55%),
+      color-mix(in srgb, var(--chip-tint) 14%, color-mix(in srgb, var(--color-surface) 35%, transparent));
+    backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  }
+  
   .liquid-glass-item {
     background: color-mix(in srgb, var(--color-surface) 30%, transparent);
     backdrop-filter: blur(16px) saturate(1.6);
@@ -254,7 +264,7 @@ body {
     0 2px 8px -2px hsl(var(--shadow-color) / 0.25);
 }
 
-/* ── Animations ─────────────────────────────────── */
+/* ── Animations ───────────────────────────���─────── */
 @keyframes pop-in {
   0% { transform: scale(0.6); opacity: 0; }
   60% { transform: scale(1.08); opacity: 1; }

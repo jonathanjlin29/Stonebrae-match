@@ -38,6 +38,8 @@ export function computeMatchStatus(
   if (all.some((id) => !map[id])) return []
 
   const lowestHcp = Math.min(...all.map((id) => map[id].handicap))
+  const strokes = (id: number, holeHcp: number) =>
+    match.straightUp ? 0 : getStrokesGiven(map[id].handicap, lowestHcp, holeHcp)
   let cumulativeA = 0
   const results: { hole: number; holeWinner: "A" | "B" | "halved"; statusA: number }[] = []
 
@@ -49,15 +51,15 @@ export function computeMatchStatus(
     let netB: number
 
     if (match.type === "team") {
-      const nA = match.teamA.map((id) => (scores[id][h] as number) - getStrokesGiven(map[id].handicap, lowestHcp, holeHcp))
-      const nB = match.teamB.map((id) => (scores[id][h] as number) - getStrokesGiven(map[id].handicap, lowestHcp, holeHcp))
+      const nA = match.teamA.map((id) => (scores[id][h] as number) - strokes(id, holeHcp))
+      const nB = match.teamB.map((id) => (scores[id][h] as number) - strokes(id, holeHcp))
       netA = Math.min(...nA)
       netB = Math.min(...nB)
     } else {
       const idA = match.teamA[0]
       const idB = match.teamB[0]
-      netA = (scores[idA][h] as number) - getStrokesGiven(map[idA].handicap, lowestHcp, holeHcp)
-      netB = (scores[idB][h] as number) - getStrokesGiven(map[idB].handicap, lowestHcp, holeHcp)
+      netA = (scores[idA][h] as number) - strokes(idA, holeHcp)
+      netB = (scores[idB][h] as number) - strokes(idB, holeHcp)
     }
 
     let holeWinner: "A" | "B" | "halved"
@@ -153,6 +155,34 @@ export function splitInteger(amount: number, n: number): number[] {
   return Array.from({ length: n }, (_, i) => base + (i < remainder ? 1 : 0))
 }
 
+export function backBetOf(match: Pick<Match, "nineBet" | "backBet">): number {
+  return Number.isFinite(match.backBet) ? match.backBet : match.nineBet
+}
+
+export function defaultPressAmount(match: Match, scope: "front" | "back" | "overall"): number {
+  return scope === "overall" ? match.overallBet : scope === "back" ? backBetOf(match) : match.nineBet
+}
+
+export function pressStartRange(scope: "front" | "back" | "overall"): [number, number] {
+  return scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
+}
+
+export function pressEndHole(scope: "front" | "back" | "overall"): number {
+  return scope === "front" ? 8 : 17
+}
+
+// First hole in the segment that hasn't been completed by every player in the match, or null
+// when the segment has no holes left to play. Presses start here.
+export function nextUnplayedHole(match: Match, scores: Scores, start: number, end: number): number | null {
+  const ids = [...match.teamA, ...match.teamB]
+  let last = start - 1
+  for (let h = start; h <= end; h++) {
+    if (ids.every((id) => scores[id]?.[h] != null)) last = h
+  }
+  const next = last + 1
+  return next <= end ? next : null
+}
+
 // ─── MONEY ─────────────────────────────────────────────────────────
 // Nassau: front (1-9) and back (10-18) are each worth `nineBet`; overall (1-18)
 // is worth `overallBet`. Each press is worth its parent segment's bet over its
@@ -177,22 +207,21 @@ export function computeMatchMoney(match: Match, scores: Scores, players: Player[
   const back = segmentWinner(match, scores, players, 9, 17, courseHoles)
   const overall = segmentWinner(match, scores, players, 0, 17, courseHoles)
   applySegment(front, match.nineBet)
-  applySegment(back, match.nineBet)
+  applySegment(back, backBetOf(match))
   applySegment(overall, match.overallBet)
 
   const pressResults: Record<string, "A" | "B" | "halved" | null> = {}
   for (const press of match.presses ?? []) {
-    const end = press.scope === "front" ? 8 : 17
+    const end = pressEndHole(press.scope)
     const w = segmentWinner(match, scores, players, press.startHole, end, courseHoles)
     pressResults[press.id] = w
-    const defaultAmount = press.scope === "overall" ? match.overallBet : match.nineBet
-    applySegment(w, press.amount ?? defaultAmount)
+    applySegment(w, press.amount ?? defaultPressAmount(match, press.scope))
   }
 
   return { money, results: { front, back, overall, pressResults } }
 }
 
-// ─── PERSONAL STAT DETECTORS ───────────────────────────────────────
+// ─── PERSONAL STAT DETECTORS ───────────────────��───────────────────
 type Rel = "eagle" | "birdie" | "par" | "bogey" | "double+" | null
 
 export function relToPar(strokes: number | null, par: number): Rel {

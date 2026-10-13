@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server"
-import { saveScore, addPress, completeRound, createRound, updatePressAmount } from "@/app/actions/rounds"
+import {
+  saveScore,
+  addPress,
+  completeRound,
+  createRound,
+  deleteMatch,
+  updateMatch,
+  updatePressAmount,
+} from "@/app/actions/rounds"
 import { createPlayer } from "@/app/actions/players"
 
 const handlers = {
@@ -10,6 +18,8 @@ const handlers = {
     addPress(payload.roundId, payload.matchId, payload.scope, payload.startHole, payload.initiatedBy, payload.amount),
   updatePressAmount: (payload: any) =>
     updatePressAmount(payload.roundId, payload.matchId, payload.pressId, payload.amount),
+  updateMatch: (payload: any) => updateMatch(payload.roundId, payload.matchId, payload.edit),
+  deleteMatch: (payload: any) => deleteMatch(payload.roundId, payload.matchId),
   completeRound: (payload: any) => completeRound(payload.roundId),
 } as const
 

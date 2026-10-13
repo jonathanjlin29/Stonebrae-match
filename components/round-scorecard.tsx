@@ -2,11 +2,10 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-  import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown, Bird } from "lucide-react"
+  import { Flag, Flame, TrendingUp, Swords, CheckCircle2, Lock, RefreshCw, Trash2, Copy, Link2, ArrowRight, HandCoins, ChevronDown, Bird, Pencil } from "lucide-react"
 import { deleteRound } from "@/app/actions/rounds"
 import { saveScoreOffline, addPressOffline, completeRoundOffline, updatePressAmountOffline } from "@/lib/offline-actions"
-import { cachePage } from "@/lib/offline-store"
-import { updateMatchBetsAdmin } from "@/app/actions/admin"
+import { cachePage, getQueuedMutations } from "@/lib/offline-store"
 import {
   computeMatchMoney,
   computeMatchStatus,
@@ -16,7 +15,14 @@ import {
   birdieStreakEndingAt,
   relToPar,
   getStrokesGiven,
+  backBetOf,
+  defaultPressAmount,
+  nextUnplayedHole,
+  pressEndHole,
+  pressStartRange,
 } from "@/lib/nassau"
+import { MatchEditor } from "./match-editor"
+import { MatchCompactList } from "./match-compact"
 import { computeSettlement } from "@/lib/settlement"
 import { COURSE, type Hole } from "@/lib/course"
 import type { Match, Press, Round, Scores } from "@/lib/types"
@@ -46,12 +52,16 @@ export function RoundScorecard({
   const [completing, setCompleting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState<Tab>("scorecard")
+  const [matchView, setMatchView] = useState<"cards" | "compact">("cards")
+  const [editingMatchId, setEditingMatchId] = useState<number | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   // Cells the user has typed into but that haven't been confirmed saved yet. A refetch that lands
   // mid-edit must not clobber these, or the score the user just typed appears to "delete itself."
   const dirtyRef = useRef<Set<string>>(new Set())
+  // Matches/presses removed on this device, so a stale server response can't bring them back.
+  const removedRef = useRef<RemovedLocally>({ matchIds: new Set(), pressKeys: new Set() })
 
   const players = round.players.map((p) => ({
     id: p.id,
@@ -65,13 +75,40 @@ export function RoundScorecard({
   const lowestHandicap = players.length > 0 ? Math.min(...players.map((p) => p.handicap)) : 0
   const isActive = round.status === "active"
   const canEditScores = !isPublicView && (isActive || isAdmin)
+  const canEditMatches = !isPublicView && (isAdmin || currentPlayerId != null)
 
   // Keep local state in sync whenever the server component re-fetches (poll or manual refresh),
   // but preserve any cell that's still being edited/saved so in-flight input isn't overwritten.
   useEffect(() => {
     setScores((prev) => mergeScores(round.scores, prev, dirtyRef.current))
-    setMatches(round.matches)
+    setMatches((prev) => mergeMatches(round.matches, prev, removedRef.current))
   }, [round])
+
+  // After a reload, scores still waiting in the offline queue aren't in the server data yet.
+  // Re-apply them so a refresh never shows older numbers than what was typed on this device.
+  useEffect(() => {
+    let cancelled = false
+    void getQueuedMutations().then((queued) => {
+      if (cancelled) return
+      const pending = queued.filter(
+        (m) => m.action === "saveScore" && (m.payload as { roundId?: number })?.roundId === round.id,
+      )
+      if (pending.length === 0) return
+      setScores((prev) => {
+        const next = clone(prev)
+        for (const m of pending) {
+          const { playerId, hole, strokes } = m.payload as { playerId: number; hole: number; strokes: number | null }
+          if (!next[playerId]) next[playerId] = Array(18).fill(null)
+          next[playerId][hole] = strokes
+          dirtyRef.current.add(`${playerId}:${hole}`)
+        }
+        return next
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [round.id])
 
   // Keep a local copy of the round so an offline direct visit to this page (or the shared public
   // link) can still render the last known scores instead of an empty shell.
@@ -85,7 +122,7 @@ export function RoundScorecard({
     if (!isActive) return
     const interval = setInterval(() => {
       router.refresh()
-    }, 30 * 1000)
+    }, 5 * 60 * 1000)
     return () => clearInterval(interval)
   }, [isActive, router])
 
@@ -162,20 +199,17 @@ export function RoundScorecard({
     match: Match,
     scope: "front" | "back" | "overall",
     amount: number,
+    fixedStartHole?: number,
   ): { ok: true } | { ok: false; reason: string } {
-    const [start_, end] = scope === "front" ? [0, 8] : scope === "back" ? [9, 17] : [0, 17]
+    const [start_, end] = pressStartRange(scope)
+    const startHole = fixedStartHole ?? nextUnplayedHole(match, scores, start_, end)
+    if (startHole == null) {
+      return { ok: false, reason: "There are no holes left to press on this segment." }
+    }
     const status = computeSegmentStatus(match, scores, players, start_, end, courseHoles)
-    if (status.holes.length === 0) {
-      return { ok: false, reason: "No holes have been played on this nine yet." }
-    }
-    if (status.frozen || status.holes.length === end - start_ + 1) {
-      return { ok: false, reason: "This segment is already closed out — there are no holes left to press." }
-    }
-    if (status.finalStatusA === 0) {
-      return { ok: false, reason: "You can't press while the match is all square." }
-    }
-    const initiatedBy = status.finalStatusA > 0 ? "B" : "A"
-    const startHole = start_ + status.holes.length
+    const viewerSide: "A" | "B" = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
+    const initiatedBy: "A" | "B" =
+      status.holes.length > 0 && status.finalStatusA !== 0 ? (status.finalStatusA > 0 ? "B" : "A") : viewerSide
     start(async () => {
       const res = await addPressOffline(round.id, match.id, scope, startHole, initiatedBy, amount)
       if (res.ok) {
@@ -306,24 +340,67 @@ export function RoundScorecard({
         <MoneyTab matches={matches} scores={scores} players={players} totals={totals} courseHoles={courseHoles} />
       </section>
 
-      <section className={`mb-6 grid gap-3 ${tab === "matches" ? "" : "hidden"}`}>
-        {matches.map((m) => (
-          <MatchCard
-            key={m.id}
-            roundId={round.id}
-            match={m}
+      <section className={`mb-6 flex flex-col gap-3 ${tab === "matches" ? "" : "hidden"}`}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm text-[var(--color-muted)]">
+            {matches.length} {matches.length === 1 ? "match" : "matches"}
+          </p>
+          <SegmentedControl
+            value={matchView}
+            onChange={setMatchView}
+            options={[
+              { value: "cards", label: "Cards" },
+              { value: "compact", label: "Compact" },
+            ]}
+          />
+        </div>
+        {matchView === "compact" && (
+          <MatchCompactList
+            matches={matches}
             scores={scores}
             players={players}
             courseHoles={courseHoles}
-            isActive={isActive}
-            isAdmin={isAdmin}
             currentPlayerId={currentPlayerId}
-            onPress={pressScope}
-            onBetsChanged={(matchId, nineBet, overallBet) =>
-              setMatches((prev) => prev.map((mm) => (mm.id === matchId ? { ...mm, nineBet, overallBet } : mm)))
-            }
+            canEdit={canEditMatches}
+            onEdit={(id) => {
+              setEditingMatchId(id)
+              setMatchView("cards")
+            }}
           />
-        ))}
+        )}
+        <div className={`grid gap-3 ${matchView === "cards" ? "" : "hidden"}`}>
+          {matches.map((m) => (
+            <MatchCard
+              key={m.id}
+              roundId={round.id}
+              match={m}
+              scores={scores}
+              players={players}
+              courseHoles={courseHoles}
+              isActive={isActive}
+              canEdit={canEditMatches}
+              editing={editingMatchId === m.id}
+              onEditingChange={(open) => setEditingMatchId(open ? m.id : null)}
+              currentPlayerId={currentPlayerId}
+              onPress={pressScope}
+                onSaved={(updated) => {
+                  for (const p of m.presses) {
+                    const stillThere = updated.presses.some(
+                      (u) => u.id === p.id || (u.scope === p.scope && u.startHole === p.startHole),
+                    )
+                    if (!stillThere) removedRef.current.pressKeys.add(pressKey(m.id, p))
+                  }
+                  for (const u of updated.presses) removedRef.current.pressKeys.delete(pressKey(m.id, u))
+                  setMatches((prev) => prev.map((mm) => (mm.id === updated.id ? updated : mm)))
+                }}
+                onDeleted={(id) => {
+                  removedRef.current.matchIds.add(id)
+                  setMatches((prev) => prev.filter((mm) => mm.id !== id))
+                setEditingMatchId(null)
+              }}
+            />
+          ))}
+        </div>
       </section>
 
       <Card className={`mb-6 overflow-x-auto p-0 ${tab === "scorecard" ? "hidden sm:block" : "hidden"}`}>
@@ -611,10 +688,13 @@ function MatchCard({
   players,
   courseHoles,
   isActive,
-  isAdmin,
+  canEdit,
+  editing,
+  onEditingChange,
   currentPlayerId,
   onPress,
-  onBetsChanged,
+  onSaved,
+  onDeleted,
 }: {
   roundId: number
   match: Match
@@ -622,17 +702,21 @@ function MatchCard({
   players: { id: number; name: string; lastName: string | null; nickname: string | null; handicap: number }[]
   courseHoles: Hole[]
   isActive: boolean
-  isAdmin: boolean
+  canEdit: boolean
+  editing: boolean
+  onEditingChange: (open: boolean) => void
   currentPlayerId: number | null
   onPress: (
     match: Match,
     scope: "front" | "back" | "overall",
     amount: number,
+    fixedStartHole?: number,
   ) => { ok: true } | { ok: false; reason: string }
-  onBetsChanged: (matchId: number, nineBet: number, overallBet: number) => void
+  onSaved: (match: Match) => void
+  onDeleted: (matchId: number) => void
 }) {
   const [pressOpen, setPressOpen] = useState(false)
-  const [pressChoice, setPressChoice] = useState<"nine" | "overall" | null>(null)
+  const [pressChoice, setPressChoice] = useState<PressChoice | null>(null)
   const [pressAmount, setPressAmount] = useState("")
   const [pressError, setPressError] = useState<string | null>(null)
 
@@ -646,13 +730,13 @@ function MatchCard({
   const back = computeSegmentStatus(match, scores, players, 9, 17, courseHoles)
   const overall = computeSegmentStatus(match, scores, players, 0, 17, courseHoles)
 
-  const frontLabel = front.holes.length ? (front.frozen ? front.closeoutLabel! : getMatchStatusLabel(front.finalStatusA)) : "Not started"
-  const backLabel = back.holes.length ? (back.frozen ? back.closeoutLabel! : getMatchStatusLabel(back.finalStatusA)) : "Not started"
+  const frontLabel = front.holes.length ? (front.frozen ? front.closeoutLabel! : getMatchStatusLabel(front.finalStatusA)) : "N/A"
+  const backLabel = back.holes.length ? (back.frozen ? back.closeoutLabel! : getMatchStatusLabel(back.finalStatusA)) : "N/A"
   const overallLabel = overall.holes.length
     ? overall.frozen
       ? overall.closeoutLabel!
       : getMatchStatusLabel(overall.finalStatusA)
-    : "Not started"
+    : "N/A"
   const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
   const teamSign = currentTeam === "B" ? -1 : 1
   const frontStatus = front.holes.length ? front.finalStatusA * teamSign : 0
@@ -664,16 +748,20 @@ function MatchCard({
       ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
       : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const canPressFront = isActive && front.holes.length > 0 && front.holes.length < 9 && !front.frozen
-  const canPressBack =
-    isActive && back.holes.length > 0 && back.holes.length < 9 && front.holes.length === 9 && !back.frozen
-  const canPressOverall = isActive && overall.holes.length > 0 && overall.holes.length < 18 && !overall.frozen
-  const currentNine: "front" | "back" | null = canPressFront ? "front" : canPressBack ? "back" : null
-  const canPressAny = currentNine != null || canPressOverall
+  const pressable = (["front", "back", "overall"] as const).filter(
+    (s) => isActive && nextUnplayedHole(match, scores, ...pressStartRange(s)) != null,
+  )
+  const choices: PressChoice[] = [
+    ...pressable,
+    ...(isActive && nextUnplayedHole(match, scores, ...pressStartRange("back")) === ALOHA_HOLE ? (["aloha"] as const) : []),
+  ]
+  const canPressAny = choices.length > 0
+  const scopeName = (s: PressChoice) =>
+    s === "front" ? "Front Nine" : s === "back" ? "Back Nine" : s === "overall" ? "Overall" : "Aloha (18th)"
 
-  function openPress(choice: "nine" | "overall") {
+  function openPress(choice: PressChoice) {
     setPressChoice(choice)
-    setPressAmount(String(choice === "overall" ? match.overallBet : match.nineBet))
+    setPressAmount(String(choice === "aloha" ? match.overallBet : defaultPressAmount(match, choice)))
     setPressError(null)
   }
 
@@ -686,10 +774,9 @@ function MatchCard({
 
   function confirmPress() {
     if (!pressChoice) return
-    const scope = pressChoice === "overall" ? "overall" : currentNine
-    if (!scope) return
     const amount = Math.round(Math.max(0, Number(pressAmount) || 0))
-    const result = onPress(match, scope, amount)
+    const result =
+      pressChoice === "aloha" ? onPress(match, "back", amount, ALOHA_HOLE) : onPress(match, pressChoice, amount)
     if (result.ok) {
       closePress()
     } else {
@@ -698,48 +785,62 @@ function MatchCard({
   }
 
   return (
-    <Card className={`p-4 sm:p-5 transition-colors ${statusTone}`}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 font-semibold">
-          <Flag className="h-4 w-4 shrink-0 text-[var(--color-primary)]" />
-          <div className="flex -space-x-2">
+    <Card className={`p-2.5 sm:p-5 transition-colors ${statusTone}`}>
+      <div className="mb-1.5 flex items-center justify-between gap-1 sm:mb-4 sm:flex-wrap sm:gap-2">
+        <div className="flex min-w-0 items-center gap-1 text-xs font-semibold sm:gap-2 sm:text-base">
+          <Flag className="hidden h-4 w-4 shrink-0 text-[var(--color-primary)] sm:block" />
+          <div className="hidden -space-x-2 sm:flex">
             {teamAPlayers.map((p) => (
               <PlayerAvatar key={p.id} player={p} size="sm" />
             ))}
           </div>
-          <span>{teamAName}</span>
-          <span className="font-display text-sm text-[var(--color-muted)]">vs</span>
-          <span>{teamBName}</span>
-          <div className="flex -space-x-2">
+          <span className="truncate">{teamAName}</span>
+          <span className="shrink-0 font-display text-[10px] text-[var(--color-muted)] sm:text-sm">vs</span>
+          <span className="truncate">{teamBName}</span>
+          <div className="hidden -space-x-2 sm:flex">
             {teamBPlayers.map((p) => (
               <PlayerAvatar key={p.id} player={p} size="sm" />
             ))}
           </div>
         </div>
-        {isAdmin ? (
-          <BetEditor match={match} onSaved={onBetsChanged} />
-        ) : (
-          <Badge className="tabular">
-            ${match.nineBet}/9 · ${match.overallBet} ovr
+        <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
+          {match.straightUp && (
+            <Badge className="px-1.5 text-[9px] sm:text-[10px]" title="Straight up — no handicap">
+              <span className="sm:hidden">SU</span>
+              <span className="hidden sm:inline">Straight up</span>
+            </Badge>
+          )}
+          <Badge className="px-1.5 text-[9px] tabular sm:px-2.5 sm:text-xs">
+            ${match.nineBet}/${backBetOf(match)}/${match.overallBet}
           </Badge>
-        )}
+          {canEdit && !editing && (
+            <button
+              onClick={() => onEditingChange(true)}
+              aria-label="Edit match"
+              title="Edit match"
+              className="rounded-full p-1 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)] sm:p-1.5"
+            >
+              <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </button>
+          )}
+        </div>
       </div>
-      <div className="grid gap-1.5 sm:grid-cols-3">
-        <div className="grid gap-1">
+      <div className="grid grid-cols-3 items-start gap-1 sm:gap-1.5">
+        <div className="grid content-start gap-1">
           <StatusRow label="Front" value={frontLabel} status={frontStatus} frozen={front.frozen} />
           <HoleTimeline holes={front.holes} teamSign={teamSign} />
         </div>
-        <div className="grid gap-1">
+        <div className="grid content-start gap-1">
           <StatusRow label="Back" value={backLabel} status={backStatus} frozen={back.frozen} />
           <HoleTimeline holes={back.holes} teamSign={teamSign} />
         </div>
-        <div className="grid gap-1">
+        <div className="grid content-start gap-1">
           <StatusRow label="Overall" value={overallLabel} status={overallStatus} frozen={overall.frozen} />
           <HoleTimeline holes={overall.holes} teamSign={teamSign} />
         </div>
       </div>
       {match.presses.length > 0 && (
-          <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+          <div className="mt-1 grid grid-cols-4 gap-1 sm:mt-2.5 sm:grid-cols-6">
           {match.presses.map((p) => (
             <PressRow
               key={p.id}
@@ -755,32 +856,29 @@ function MatchCard({
         </div>
       )}
       {canPressAny && (
-        <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+        <div className="mt-1.5 border-t border-[var(--color-border)] pt-1.5 sm:mt-4 sm:pt-4">
           {!pressOpen ? (
             <button
               onClick={() => setPressOpen(true)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-full bg-[var(--color-gold)] px-4 py-2.5 text-sm font-bold text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-[0.98] hover:brightness-105"
+              className="flex w-full items-center justify-center gap-1.5 rounded-full bg-[var(--color-gold)] px-4 py-1 text-xs font-bold sm:py-2.5 sm:text-sm text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-[0.98] hover:brightness-105"
             >
               <Swords className="h-4 w-4" /> Press
             </button>
           ) : !pressChoice ? (
             <div className="flex flex-wrap items-center gap-2">
-              {currentNine && (
+              {choices.map((s) => (
                 <button
-                  onClick={() => openPress("nine")}
-                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
+                  key={s}
+                  onClick={() => openPress(s)}
+                  className={`flex-1 rounded-full px-4 py-2.5 text-[9px] font-semibold transition-colors ${
+                    s === "aloha"
+                      ? "bg-[var(--color-gold)]/15 text-[var(--color-gold)] ring-1 ring-[var(--color-gold)]/40 hover:bg-[var(--color-gold)]/25"
+                      : "bg-[var(--color-surface-2)] hover:bg-[var(--color-border)]"
+                  }`}
                 >
-                  Press {currentNine === "front" ? "Front" : "Back"} Nine
+                  {s === "aloha" ? "Aloha · 18th" : `Press ${scopeName(s)}`}
                 </button>
-              )}
-              {canPressOverall && (
-                <button
-                  onClick={() => openPress("overall")}
-                  className="flex-1 rounded-full bg-[var(--color-surface-2)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--color-border)]"
-                >
-                  Press Overall
-                </button>
-              )}
+              ))}
               <button
                 onClick={closePress}
                 className="rounded-full px-4 py-2.5 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
@@ -790,9 +888,9 @@ function MatchCard({
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold">
-                  Press {pressChoice === "overall" ? "Overall" : `${currentNine === "front" ? "Front" : "Back"} Nine`} for
+              <div className="flex flex-wrap items-center gap-2 text-[9px]">
+                <span className="font-semibold">
+                  {pressChoice === "aloha" ? "Aloha on 18 for" : `Press ${scopeName(pressChoice)} for`}
                 </span>
                 <span className="text-[var(--color-muted)]">$</span>
                 <input
@@ -804,13 +902,13 @@ function MatchCard({
                 />
                 <button
                   onClick={confirmPress}
-                  className="rounded-full bg-[var(--color-gold)] px-4 py-2 text-sm font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
+                  className="rounded-full bg-[var(--color-gold)] px-4 py-2 font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"
                 >
                   Confirm
                 </button>
                 <button
                   onClick={closePress}
-                  className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+                  className="rounded-full px-3 py-2 font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
                 >
                   Cancel
                 </button>
@@ -824,53 +922,17 @@ function MatchCard({
           )}
         </div>
       )}
+      {editing && (
+        <MatchEditor
+          roundId={roundId}
+          match={match}
+          players={players}
+          onSaved={onSaved}
+          onDeleted={onDeleted}
+          onClose={() => onEditingChange(false)}
+        />
+      )}
     </Card>
-  )
-}
-
-function BetEditor({
-  match,
-  onSaved,
-}: {
-  match: Match
-  onSaved: (matchId: number, nineBet: number, overallBet: number) => void
-}) {
-  const [nineBet, setNineBet] = useState(String(match.nineBet))
-  const [overallBet, setOverallBet] = useState(String(match.overallBet))
-  const [, start] = useTransition()
-
-  function commit() {
-    const n = Math.round(Math.max(0, Number(nineBet) || 0))
-    const o = Math.round(Math.max(0, Number(overallBet) || 0))
-    setNineBet(String(n))
-    setOverallBet(String(o))
-    if (n === match.nineBet && o === match.overallBet) return
-    start(async () => {
-      const res = await updateMatchBetsAdmin(match.id, n, o)
-      if (res.ok) onSaved(match.id, n, o)
-    })
-  }
-
-  return (
-    <div className="flex items-center gap-1 text-sm font-semibold tabular">
-      <span className="text-[var(--color-muted)]">$</span>
-      <input
-        type="number"
-        value={nineBet}
-        onChange={(e) => setNineBet(e.target.value)}
-        onBlur={commit}
-        className="h-7 w-12 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1 text-center outline-none focus:border-[var(--color-primary)]"
-      />
-      <span className="text-[var(--color-muted)]">/9 · $</span>
-      <input
-        type="number"
-        value={overallBet}
-        onChange={(e) => setOverallBet(e.target.value)}
-        onBlur={commit}
-        className="h-7 w-12 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1 text-center outline-none focus:border-[var(--color-primary)]"
-      />
-      <span className="text-[var(--color-muted)]">ovr</span>
-    </div>
   )
 }
 
@@ -891,37 +953,46 @@ function PressRow({
   courseHoles: Hole[]
   currentPlayerId: number | null
 }) {
-  const end = press.scope === "front" ? 8 : 17
+  const end = pressEndHole(press.scope)
   const status = computeSegmentStatus(match, scores, players, press.startHole, end, courseHoles)
   const label = status.holes.length
     ? status.frozen
       ? status.closeoutLabel!
       : getMatchStatusLabel(status.finalStatusA)
-    : "Not started"
+    : "N/A"
   const currentTeam = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
   const teamSign = currentTeam === "B" ? -1 : 1
+  const isAloha = press.scope === "back" && press.startHole === ALOHA_HOLE
   const statusVal = status.holes.length ? status.finalStatusA * teamSign : 0
   const statusTone =
     statusVal < 0
-      ? "border-[var(--color-danger)]/45 bg-[var(--color-danger)]/10"
+      ? "[--chip-tint:var(--color-danger)]"
       : statusVal > 0
-        ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
-        : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
+        ? "[--chip-tint:var(--color-primary)]"
+        : "[--chip-tint:var(--color-match-square)]"
 
-  const scopeLabel = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front Nine" : "Back Nine"
+  const scopeShort = press.scope === "overall" ? "O" : press.scope === "front" ? "F" : "B"
+  const scopeName = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front" : "Back"
 
   return (
-    <div className={`rounded-xl border-l-4 px-2.5 py-2 transition-colors ${statusTone}`}>
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
-        <Swords className="h-3 w-3 shrink-0 text-[var(--color-gold)]" />
-        <Badge className="bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]">Press</Badge>
-          <span className="text-[var(--color-muted)]">{scopeLabel}</span>
-        <div className="ml-auto flex items-center gap-1.5">
+    <div className={`liquid-glass-chip rounded-lg sm:rounded-xl px-1.5 py-1 text-[8px] leading-tight transition-colors ${statusTone}`}>
+      <div className="flex items-center gap-1 font-semibold">
+        <span className="text-[10px] font-bold uppercase text-[var(--color-gold)]">{isAloha ? "Aloha" : "Press"}</span>
+        {!isAloha && (
+          <span className="tabular text-[var(--color-muted)]" title={`${scopeName} · started hole ${press.startHole + 1}`}>
+            {scopeShort}
+            {press.startHole + 1}
+          </span>
+        )}
+        <div className="ml-auto flex items-center">
           <PressAmountEditor roundId={roundId} matchId={match.id} press={press} />
         </div>
       </div>
-      <StatusRow label={scopeLabel} value={label} status={statusVal} frozen={status.frozen} />
-      <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-1.5" />
+      <div className="mt-0.5 flex items-center gap-1 text-[10px] font-normal tracking-tight">
+        <span className="shrink-0">{label}</span>
+        {status.frozen && <Lock className="h-2 w-2 shrink-0 text-[var(--color-gold)]" aria-label="Frozen" />}
+      </div>
+      <HoleSquares holes={status.holes} teamSign={teamSign} />
     </div>
   )
 }
@@ -958,7 +1029,7 @@ function PressAmountEditor({ roundId, matchId, press }: { roundId: number; match
               setEditing(false)
             }
           }}
-          className="h-6 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 text-center outline-none focus:border-[var(--color-primary)]"
+          className="h-5 w-10 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 text-center outline-none focus:border-[var(--color-primary)]"
         />
       </span>
     )
@@ -967,10 +1038,10 @@ function PressAmountEditor({ roundId, matchId, press }: { roundId: number; match
   return (
     <button
       onClick={() => setEditing(true)}
-      className="flex items-center gap-1 text-[10px] font-semibold text-[var(--color-foreground)]"
+      aria-label={`Edit press amount, currently $${press.amount}`}
+      className="text-[12px] font-bold tabular text-[var(--color-primary)] underline underline-offset-2"
     >
-      <Badge className="tabular">${press.amount}</Badge>
-      <span className="text-[var(--color-primary)] underline underline-offset-2">Edit</span>
+      ${press.amount}
     </button>
   )
 }
@@ -1128,17 +1199,17 @@ function StatusRow({
         ? "bg-[var(--color-primary)]/10"
         : "bg-[var(--color-surface-2)]"
   return (
-    <div className={`flex items-center justify-between rounded-xl px-3 py-2 transition-colors ${tone}`}>
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-        <p className="font-display text-base tracking-tight">{value}</p>
+    <div className={`flex h-[29px] items-center justify-between gap-1 overflow-hidden rounded-lg px-2 transition-colors sm:h-[36px] sm:rounded-xl sm:px-3 ${tone}`}>
+      <div className="min-w-0">
+        <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--color-muted)] sm:text-[10px]">{label}</p>
+        <p className="truncate font-display text-xs tracking-tight sm:text-sm">{value}</p>
       </div>
       {frozen ? (
         <Badge
-          className="gap-1 bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]"
+          className="shrink-0 gap-1 bg-[var(--color-gold)]/15 px-1 py-0 text-[10px] text-[var(--color-gold)] sm:px-2"
           title="Match is mathematically decided"
         >
-          <Lock className="h-3 w-3" /> Frozen
+          <Lock className="h-3 w-3" /> <span className="hidden sm:inline">Frozen</span>
         </Badge>
       ) : null}
     </div>
@@ -1159,25 +1230,58 @@ function HoleTimeline({
 }) {
   if (holes.length === 0) return null
   return (
-    <div className={`flex flex-wrap gap-1 ${className}`}>
+    <div className={`flex gap-px sm:flex-wrap sm:gap-1 ${className}`}>
       {holes.map(({ hole, holeWinner }) => {
         const outcome =
           holeWinner === "halved" ? "push" : (holeWinner === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
         const tone =
           outcome === "won"
-            ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
+            ? "bg-[var(--color-primary)]/70 sm:bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
             : outcome === "push"
-              ? "bg-[var(--color-match-square)]/25 text-[var(--color-match-square)]"
-              : "bg-[var(--color-danger)]/20 text-[var(--color-danger)]"
+              ? "bg-[var(--color-match-square)]/70 sm:bg-[var(--color-match-square)]/25 text-[var(--color-match-square)]"
+              : "bg-[var(--color-danger)]/70 sm:bg-[var(--color-danger)]/20 text-[var(--color-danger)]"
         return (
           <span
             key={hole}
             title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
-            className={`flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular ${tone}`}
+            className={`flex h-1.5 max-w-3 flex-1 items-center justify-center rounded-sm text-[11px] font-bold tabular sm:h-6 sm:w-6 sm:max-w-none sm:flex-none sm:rounded-md ${tone}`}
           >
-            {hole + 1}
+            <span className="sr-only sm:not-sr-only">{hole + 1}</span>
           </span>
         )
+      })}
+    </div>
+  )
+}
+
+function HoleSquares({
+  holes,
+  teamSign,
+}: {
+  holes: { hole: number; holeWinner: "A" | "B" | "halved" }[]
+  teamSign: number
+}) {
+  if (holes.length === 0) return null
+  return (
+    <div className="mt-0.5 flex min-w-0 flex-wrap gap-0.5" aria-label="Hole results">
+      {holes.map(({ hole, holeWinner }) => {
+        const outcome =
+          holeWinner === "halved" ? "push" : (holeWinner === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
+        const tone =
+          outcome === "won"
+            ? "bg-[var(--color-primary)]"
+            : outcome === "push"
+              ? "bg-[var(--color-match-square)]"
+              : "bg-[var(--color-danger)]"
+        return (
+          <span
+            key={hole}
+            title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
+  className={`flex h-2 min-w-2 shrink-0 items-center justify-center rounded-[2px] px-px text-[4px] font-bold leading-none tabular text-[var(--color-primary-foreground)] ${tone}`}
+  >
+  {hole + 1}
+  </span>
+  )
       })}
     </div>
   )
@@ -1225,6 +1329,11 @@ function CelebrationOverlay({
   )
 }
 
+type PressChoice = "front" | "back" | "overall" | "aloha"
+
+// "Aloha" is a last-hole press: a back-nine press covering only the 18th (index 17), any amount.
+const ALOHA_HOLE = 17
+
 function clone(s: Scores): Scores {
   const out: Scores = {}
   for (const [k, v] of Object.entries(s)) out[Number(k)] = [...v]
@@ -1239,23 +1348,59 @@ function clone(s: Scores): Scores {
 // background refresh that started fetching before that save finished can still land afterward
 // carrying pre-save data, and trusting "my save promise resolved" timing over "the data I just
 // received matches" is what let a stale refresh silently wipe out just-typed scores.
+// Local data is authoritative: a score already on this device is never replaced by server data.
+// The server only fills cells that are still empty here. A cell the user deliberately cleared stays
+// cleared (via the dirty set) until the server agrees, so a stale response can't resurrect it.
 function mergeScores(server: Scores, local: Scores, dirty: Set<string>): Scores {
-  const out = clone(server)
-  for (const key of dirty) {
-    const [pidStr, holeStr] = key.split(":")
-    const pid = Number(pidStr)
-    const hole = Number(holeStr)
-    const localValue = local[pid]?.[hole] ?? null
-    const serverValue = out[pid]?.[hole] ?? null
-    if (serverValue === localValue) {
-      // The server has caught up to what's on screen; safe to stop overriding this cell.
-      dirty.delete(key)
-      continue
-    }
+  const out = clone(local)
+  const playerIds = new Set([...Object.keys(server), ...Object.keys(local)].map(Number))
+  for (const pid of playerIds) {
     if (!out[pid]) out[pid] = Array(18).fill(null)
-    out[pid][hole] = localValue
+    for (let hole = 0; hole < 18; hole++) {
+      const key = `${pid}:${hole}`
+      const localValue = local[pid]?.[hole] ?? null
+      const serverValue = server[pid]?.[hole] ?? null
+      if (dirty.has(key)) {
+        if (serverValue === localValue) dirty.delete(key)
+        continue
+      }
+      if (localValue == null && serverValue != null) out[pid][hole] = serverValue
+    }
   }
   return out
+}
+
+type RemovedLocally = { matchIds: Set<number>; pressKeys: Set<string> }
+
+function pressKey(matchId: number, p: { scope: string; startHole: number }) {
+  return `${matchId}:${p.scope}:${p.startHole}`
+}
+
+// Local match data is authoritative: anything already on this device (matches, presses, edited
+// amounts) is kept as-is. The server can only add matches/presses this device doesn't know about,
+// and never resurrects something removed here. A temporary local press id is swapped for the
+// server's real id once it shows up, so later edits target the saved row.
+function mergeMatches(server: Match[], local: Match[], removed: RemovedLocally): Match[] {
+  const merged: Match[] = local.map((lm) => {
+    const sm = server.find((m) => m.id === lm.id)
+    if (!sm) return lm
+    const presses = lm.presses.map((lp) => {
+      if (!lp.id.startsWith("local-")) return lp
+      const saved = sm.presses.find((sp) => sp.scope === lp.scope && sp.startHole === lp.startHole)
+      return saved ? { ...lp, id: saved.id } : lp
+    })
+    const extra = sm.presses.filter(
+      (sp) =>
+        !removed.pressKeys.has(pressKey(lm.id, sp)) &&
+        !presses.some((lp) => lp.id === sp.id || (lp.scope === sp.scope && lp.startHole === sp.startHole)),
+    )
+    return extra.length ? { ...lm, presses: [...presses, ...extra] } : { ...lm, presses }
+  })
+  for (const sm of server) {
+    if (removed.matchIds.has(sm.id) || merged.some((m) => m.id === sm.id)) continue
+    merged.push({ ...sm, presses: sm.presses.filter((sp) => !removed.pressKeys.has(pressKey(sm.id, sp))) })
+  }
+  return merged
 }
 
 function sumRange(holes: (number | null)[], start: number, end: number): number | null {

@@ -1,6 +1,16 @@
 "use client"
 
-import { addPress, completeRound, createRound, saveScore, updatePressAmount } from "@/app/actions/rounds"
+import {
+  addPress,
+  completeRound,
+  createRound,
+  deleteMatch,
+  saveScore,
+  updateMatch,
+  updatePressAmount,
+  type MatchEdit,
+} from "@/app/actions/rounds"
+import { isStraightUpMatchup } from "@/lib/match-rules"
 import { createPlayer } from "@/app/actions/players"
 import { COURSE, STONEBRAE_ID, type SavedCourse } from "@/lib/course"
 import { cachePage, enqueueMutation, replayQueuedMutations, resolveId, setActiveOfflineRound } from "@/lib/offline-store"
@@ -35,7 +45,9 @@ type MatchConfig = {
   teamA: number[]
   teamB: number[]
   nineBet: number
+  backBet?: number
   overallBet: number
+  straightUp?: boolean
 }
 
 export async function createRoundOffline(input: {
@@ -75,7 +87,9 @@ export async function createRoundOffline(input: {
     teamA: m.teamA,
     teamB: m.teamB,
     nineBet: m.nineBet,
+    backBet: m.backBet ?? m.nineBet,
     overallBet: m.overallBet,
+    straightUp: Boolean(m.straightUp) || isStraightUpMatchup(m.teamA, m.teamB, input.roster),
     presses: [],
     results: { front: null, back: null, overall: null, pressResults: {} },
     money: {},
@@ -131,6 +145,26 @@ export async function updatePressAmountOffline(roundId: number, matchId: number,
   }
   await enqueueMutation("updatePressAmount", { roundId: resolvedRoundId, matchId: resolvedMatchId, pressId, amount })
   return { ok: true, queued: true }
+}
+
+export async function updateMatchOffline(roundId: number, matchId: number, edit: MatchEdit) {
+  const resolvedRoundId = await resolveMaybeTempId(roundId)
+  const resolvedMatchId = await resolveMaybeTempId(matchId)
+  if (resolvedRoundId >= 0 && resolvedMatchId >= 0 && navigator.onLine) {
+    return updateMatch(resolvedRoundId, resolvedMatchId, edit)
+  }
+  await enqueueMutation("updateMatch", { roundId: resolvedRoundId, matchId: resolvedMatchId, edit })
+  return { ok: true as const, queued: true }
+}
+
+export async function deleteMatchOffline(roundId: number, matchId: number) {
+  const resolvedRoundId = await resolveMaybeTempId(roundId)
+  const resolvedMatchId = await resolveMaybeTempId(matchId)
+  if (resolvedRoundId >= 0 && resolvedMatchId >= 0 && navigator.onLine) {
+    return deleteMatch(resolvedRoundId, resolvedMatchId)
+  }
+  await enqueueMutation("deleteMatch", { roundId: resolvedRoundId, matchId: resolvedMatchId })
+  return { ok: true as const, queued: true }
 }
 
 export async function completeRoundOffline(roundId: number) {
