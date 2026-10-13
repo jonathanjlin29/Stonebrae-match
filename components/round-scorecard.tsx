@@ -740,42 +740,47 @@ function MatchCard({
   }
 
   return (
-    <Card className={`p-4 sm:p-5 transition-colors ${statusTone}`}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 font-semibold">
-          <Flag className="h-4 w-4 shrink-0 text-[var(--color-primary)]" />
-          <div className="flex -space-x-2">
+    <Card className={`p-2.5 sm:p-5 transition-colors ${statusTone}`}>
+      <div className="mb-1.5 flex items-center justify-between gap-1 sm:mb-4 sm:flex-wrap sm:gap-2">
+        <div className="flex min-w-0 items-center gap-1 text-xs font-semibold sm:gap-2 sm:text-base">
+          <Flag className="hidden h-4 w-4 shrink-0 text-[var(--color-primary)] sm:block" />
+          <div className="hidden -space-x-2 sm:flex">
             {teamAPlayers.map((p) => (
               <PlayerAvatar key={p.id} player={p} size="sm" />
             ))}
           </div>
-          <span>{teamAName}</span>
-          <span className="font-display text-sm text-[var(--color-muted)]">vs</span>
-          <span>{teamBName}</span>
-          <div className="flex -space-x-2">
+          <span className="truncate">{teamAName}</span>
+          <span className="shrink-0 font-display text-[10px] text-[var(--color-muted)] sm:text-sm">vs</span>
+          <span className="truncate">{teamBName}</span>
+          <div className="hidden -space-x-2 sm:flex">
             {teamBPlayers.map((p) => (
               <PlayerAvatar key={p.id} player={p} size="sm" />
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          {match.straightUp && <Badge className="text-[10px]">Straight up</Badge>}
-          <Badge className="tabular">
-            ${match.nineBet} F · ${backBetOf(match)} B · ${match.overallBet} ovr
+        <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
+          {match.straightUp && (
+            <Badge className="px-1.5 text-[9px] sm:text-[10px]" title="Straight up — no handicap">
+              <span className="sm:hidden">SU</span>
+              <span className="hidden sm:inline">Straight up</span>
+            </Badge>
+          )}
+          <Badge className="px-1.5 text-[9px] tabular sm:px-2.5 sm:text-xs">
+            ${match.nineBet}/${backBetOf(match)}/${match.overallBet}
           </Badge>
           {canEdit && !editing && (
             <button
               onClick={() => onEditingChange(true)}
               aria-label="Edit match"
               title="Edit match"
-              className="rounded-full p-1.5 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)]"
+              className="rounded-full p-1 text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-foreground)] sm:p-1.5"
             >
-              <Pencil className="h-4 w-4" />
+              <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </button>
           )}
         </div>
       </div>
-      <div className="grid gap-1.5 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-1 sm:gap-1.5">
         <div className="grid gap-1">
           <StatusRow label="Front" value={frontLabel} status={frontStatus} frozen={front.frozen} />
           <HoleTimeline holes={front.holes} teamSign={teamSign} />
@@ -790,7 +795,7 @@ function MatchCard({
         </div>
       </div>
       {match.presses.length > 0 && (
-          <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+          <div className="mt-1 grid grid-cols-4 gap-1 sm:mt-2.5 sm:grid-cols-6">
           {match.presses.map((p) => (
             <PressRow
               key={p.id}
@@ -806,11 +811,11 @@ function MatchCard({
         </div>
       )}
       {canPressAny && (
-        <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+        <div className="mt-1.5 border-t border-[var(--color-border)] pt-1.5 sm:mt-4 sm:pt-4">
           {!pressOpen ? (
             <button
               onClick={() => setPressOpen(true)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-full bg-[var(--color-gold)] px-4 py-2.5 text-sm font-bold text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-[0.98] hover:brightness-105"
+              className="flex w-full items-center justify-center gap-1.5 rounded-full bg-[var(--color-gold)] px-4 py-1 text-xs font-bold sm:py-2.5 sm:text-sm text-[#2a1e00] shadow-[0_4px_10px_-2px_hsl(45_90%_50%/0.5)] transition-transform active:scale-[0.98] hover:brightness-105"
             >
               <Swords className="h-4 w-4" /> Press
             </button>
@@ -916,19 +921,25 @@ function PressRow({
         ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
         : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const scopeLabel = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front Nine" : "Back Nine"
+  const scopeShort = press.scope === "overall" ? "O" : press.scope === "front" ? "F" : "B"
+  const scopeName = press.scope === "overall" ? "Overall" : press.scope === "front" ? "Front" : "Back"
 
   return (
-    <div className={`rounded-xl border-l-4 px-2.5 py-2 pr-[84px] transition-colors ${statusTone}`}>
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
-        <Badge className="bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]">Press</Badge>
-          <span className="text-[var(--color-muted)]">{scopeLabel}</span>
-        <div className="ml-auto flex items-center gap-1.5">
+    <div className={`rounded-lg border-l-2 px-1.5 py-1 text-[8px] leading-tight transition-colors ${statusTone}`}>
+      <div className="flex items-center gap-1 font-semibold">
+        <span className="font-bold uppercase text-[var(--color-gold)]">Press</span>
+        <span className="text-[var(--color-muted)]" title={scopeName}>
+          {scopeShort}
+        </span>
+        <div className="ml-auto flex items-center">
           <PressAmountEditor roundId={roundId} matchId={match.id} press={press} />
         </div>
       </div>
-      <StatusRow label={scopeLabel} value={label} status={statusVal} frozen={status.frozen} />
-      <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-1.5" />
+      <p className="mt-0.5 flex items-center gap-1 font-display tracking-tight">
+        {label}
+        {status.frozen && <Lock className="h-2 w-2 text-[var(--color-gold)]" aria-label="Frozen" />}
+      </p>
+      <HoleTimeline holes={status.holes} teamSign={teamSign} className="mt-0.5" />
     </div>
   )
 }
@@ -965,7 +976,7 @@ function PressAmountEditor({ roundId, matchId, press }: { roundId: number; match
               setEditing(false)
             }
           }}
-          className="h-6 w-14 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 text-center outline-none focus:border-[var(--color-primary)]"
+          className="h-5 w-10 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 text-center outline-none focus:border-[var(--color-primary)]"
         />
       </span>
     )
@@ -974,10 +985,10 @@ function PressAmountEditor({ roundId, matchId, press }: { roundId: number; match
   return (
     <button
       onClick={() => setEditing(true)}
-      className="flex items-center gap-1 text-[10px] font-semibold text-[var(--color-foreground)]"
+      aria-label={`Edit press amount, currently $${press.amount}`}
+      className="text-[8px] font-bold tabular text-[var(--color-primary)] underline underline-offset-2"
     >
-      <Badge className="tabular">${press.amount}</Badge>
-      <span className="text-[var(--color-primary)] underline underline-offset-2">Edit</span>
+      ${press.amount}
     </button>
   )
 }
@@ -1135,17 +1146,17 @@ function StatusRow({
         ? "bg-[var(--color-primary)]/10"
         : "bg-[var(--color-surface-2)]"
   return (
-    <div className={`flex items-center justify-between rounded-xl px-3 py-2 transition-colors ${tone}`}>
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-        <p className="font-display text-sm tracking-tight">{value}</p>
+    <div className={`flex items-center justify-between gap-1 rounded-lg px-2 py-1 transition-colors sm:rounded-xl sm:px-3 sm:py-2 ${tone}`}>
+      <div className="min-w-0">
+        <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--color-muted)] sm:text-[10px]">{label}</p>
+        <p className="truncate font-display text-xs tracking-tight sm:text-sm">{value}</p>
       </div>
       {frozen ? (
         <Badge
-          className="gap-1 bg-[var(--color-gold)]/15 text-[10px] text-[var(--color-gold)]"
+          className="gap-1 bg-[var(--color-gold)]/15 px-1 text-[10px] text-[var(--color-gold)] sm:px-2"
           title="Match is mathematically decided"
         >
-          <Lock className="h-3 w-3" /> Frozen
+          <Lock className="h-3 w-3" /> <span className="hidden sm:inline">Frozen</span>
         </Badge>
       ) : null}
     </div>
@@ -1166,23 +1177,23 @@ function HoleTimeline({
 }) {
   if (holes.length === 0) return null
   return (
-    <div className={`flex flex-wrap gap-1 ${className}`}>
+    <div className={`flex gap-px sm:flex-wrap sm:gap-1 ${className}`}>
       {holes.map(({ hole, holeWinner }) => {
         const outcome =
           holeWinner === "halved" ? "push" : (holeWinner === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
         const tone =
           outcome === "won"
-            ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
+            ? "bg-[var(--color-primary)]/70 sm:bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
             : outcome === "push"
-              ? "bg-[var(--color-match-square)]/25 text-[var(--color-match-square)]"
-              : "bg-[var(--color-danger)]/20 text-[var(--color-danger)]"
+              ? "bg-[var(--color-match-square)]/70 sm:bg-[var(--color-match-square)]/25 text-[var(--color-match-square)]"
+              : "bg-[var(--color-danger)]/70 sm:bg-[var(--color-danger)]/20 text-[var(--color-danger)]"
         return (
           <span
             key={hole}
             title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
-            className={`flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold tabular ${tone}`}
+            className={`flex h-1.5 max-w-3 flex-1 items-center justify-center rounded-sm text-[11px] font-bold tabular sm:h-6 sm:w-6 sm:max-w-none sm:flex-none sm:rounded-md ${tone}`}
           >
-            {hole + 1}
+            <span className="sr-only sm:not-sr-only">{hole + 1}</span>
           </span>
         )
       })}
