@@ -787,16 +787,16 @@ function MatchCard({
           )}
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-1 sm:gap-1.5">
-        <div className="grid gap-1">
+      <div className="grid grid-cols-3 items-start gap-1 sm:gap-1.5">
+        <div className="grid content-start gap-1">
           <StatusRow label="Front" value={frontLabel} status={frontStatus} frozen={front.frozen} />
           <HoleTimeline holes={front.holes} teamSign={teamSign} />
         </div>
-        <div className="grid gap-1">
+        <div className="grid content-start gap-1">
           <StatusRow label="Back" value={backLabel} status={backStatus} frozen={back.frozen} />
           <HoleTimeline holes={back.holes} teamSign={teamSign} />
         </div>
-        <div className="grid gap-1">
+        <div className="grid content-start gap-1">
           <StatusRow label="Overall" value={overallLabel} status={overallStatus} frozen={overall.frozen} />
           <HoleTimeline holes={overall.holes} teamSign={teamSign} />
         </div>
@@ -941,8 +941,9 @@ function PressRow({
       <div className="flex items-center gap-1 font-semibold">
         <span className="text-[10px] font-bold uppercase text-[var(--color-gold)]">{isAloha ? "Aloha" : "Press"}</span>
         {!isAloha && (
-          <span className="text-[var(--color-muted)]" title={scopeName}>
+          <span className="tabular text-[var(--color-muted)]" title={`${scopeName} · started hole ${press.startHole + 1}`}>
             {scopeShort}
+            {press.startHole + 1}
           </span>
         )}
         <div className="ml-auto flex items-center">
@@ -952,8 +953,8 @@ function PressRow({
       <div className="mt-0.5 flex items-center gap-1 text-[10px] font-normal tracking-tight">
         <span className="shrink-0">{label}</span>
         {status.frozen && <Lock className="h-2 w-2 shrink-0 text-[var(--color-gold)]" aria-label="Frozen" />}
-        <HoleSquares holes={status.holes} teamSign={teamSign} />
       </div>
+      <HoleSquares holes={status.holes} teamSign={teamSign} />
     </div>
   )
 }
@@ -1160,14 +1161,14 @@ function StatusRow({
         ? "bg-[var(--color-primary)]/10"
         : "bg-[var(--color-surface-2)]"
   return (
-    <div className={`flex items-center justify-between gap-1 rounded-lg px-2 py-0 transition-colors sm:rounded-xl sm:px-3 sm:py-0.5 ${tone}`}>
+    <div className={`flex h-8 items-center justify-between gap-1 overflow-hidden rounded-lg px-2 transition-colors sm:h-11 sm:rounded-xl sm:px-3 ${tone}`}>
       <div className="min-w-0">
         <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--color-muted)] sm:text-[10px]">{label}</p>
         <p className="truncate font-display text-xs tracking-tight sm:text-sm">{value}</p>
       </div>
       {frozen ? (
         <Badge
-          className="gap-1 bg-[var(--color-gold)]/15 px-1 text-[10px] text-[var(--color-gold)] sm:px-2"
+          className="shrink-0 gap-1 bg-[var(--color-gold)]/15 px-1 py-0 text-[10px] text-[var(--color-gold)] sm:px-2"
           title="Match is mathematically decided"
         >
           <Lock className="h-3 w-3" /> <span className="hidden sm:inline">Frozen</span>
@@ -1224,7 +1225,7 @@ function HoleSquares({
 }) {
   if (holes.length === 0) return null
   return (
-    <div className="flex min-w-0 flex-wrap gap-px" aria-label="Hole results">
+    <div className="mt-0.5 flex min-w-0 flex-wrap gap-0.5" aria-label="Hole results">
       {holes.map(({ hole, holeWinner }) => {
         const outcome =
           holeWinner === "halved" ? "push" : (holeWinner === "A" ? 1 : -1) * teamSign > 0 ? "won" : "lost"
@@ -1238,7 +1239,7 @@ function HoleSquares({
           <span
             key={hole}
             title={`Hole ${hole + 1} · ${outcome === "won" ? "Won" : outcome === "push" ? "Halved" : "Lost"}`}
-            className={`h-1.5 w-1.5 rounded-[1px] ${tone}`}
+            className={`block h-2 w-2 shrink-0 rounded-[2px] ${tone}`}
           />
         )
       })}

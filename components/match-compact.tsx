@@ -59,17 +59,17 @@ export function MatchCompactList({
           const { money } = computeMatchMoney(m, scores, players as unknown as Player[], courseHoles)
           const sideIds = viewerSide === "B" ? m.teamB : m.teamA
           const sideMoney = sideIds.reduce((sum, id) => sum + (money[id] ?? 0), 0)
-          const pressSummary = (["front", "back", "overall"] as const)
-            .map((scope) => {
-              const list = m.presses.filter((p) => p.scope === scope)
-              if (!list.length) return null
-              const labels = list.map((p) => {
-                const st = computeSegmentStatus(m, scores, players, p.startHole, pressEndHole(scope), courseHoles)
-                return shortStatus(st.holes.length, st.frozen, st.closeoutLabel, st.finalStatusA, sign)
-              })
-              return `${scope === "front" ? "F" : scope === "back" ? "B" : "T"}: ${labels.join(" ")}`
-            })
-            .filter(Boolean)
+          const pressChips = m.presses.map((p) => {
+            const st = computeSegmentStatus(m, scores, players, p.startHole, pressEndHole(p.scope), courseHoles)
+            const isAloha = p.scope === "back" && p.startHole === 17
+            return {
+              id: p.id,
+              tag: isAloha ? "Aloha" : `${p.scope === "front" ? "F" : p.scope === "back" ? "B" : "T"}${p.startHole + 1}`,
+              status: shortStatus(st.holes.length, st.frozen, st.closeoutLabel, st.finalStatusA, sign),
+              tone: toneFor(st.holes.length, st.finalStatusA, sign),
+              amount: p.amount,
+            }
+          })
           const nameA = m.teamA.map((id) => shortLabel(byId[id])).join(" & ")
           const nameB = m.teamB.map((id) => shortLabel(byId[id])).join(" & ")
 
@@ -92,12 +92,6 @@ export function MatchCompactList({
                   <span className="truncate text-[11px] leading-tight text-[var(--color-muted)] tabular">
                     ${m.nineBet}/${m.backBet}/${m.overallBet}
                     {m.straightUp ? " · straight" : ""}
-                    {pressSummary.length > 0 && (
-                      <>
-                        {" · "}
-                        <Swords className="inline h-2.5 w-2.5 text-[var(--color-gold)]" aria-label="Presses" /> {pressSummary.join(", ")}
-                      </>
-                    )}
                   </span>
                 </span>
                 {segs.map((st, i) => (
@@ -106,6 +100,21 @@ export function MatchCompactList({
                   </span>
                 ))}
                 <span className={`text-right text-xs font-bold tabular ${moneyClass(sideMoney)}`}>{formatMoney(sideMoney)}</span>
+                {pressChips.length > 0 && (
+                  <span className="col-span-5 flex flex-wrap items-center gap-1" aria-label="Presses">
+                    <Swords className="h-3 w-3 shrink-0 text-[var(--color-gold)]" aria-hidden />
+                    {pressChips.map((c) => (
+                      <span
+                        key={c.id}
+                        title={`Press ${c.tag} · $${c.amount}`}
+                        className="flex items-center gap-1 rounded-md bg-[var(--color-surface-2)] px-1.5 py-0.5 text-[10px] leading-none tabular"
+                      >
+                        <span className="font-semibold text-[var(--color-muted)]">{c.tag}</span>
+                        <span className={`font-bold ${c.tone}`}>{c.status}</span>
+                      </span>
+                    ))}
+                  </span>
+                )}
               </button>
             </li>
           )
