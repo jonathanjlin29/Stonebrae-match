@@ -5,7 +5,7 @@ export type SavedCourse = Course & { id: string; builtIn: boolean }
 export const STONEBRAE_ID = "stonebrae"
 
 export const COURSE: Course = {
-  name: "Stonebrae — Black Tees",
+  name: "Stonebrae",
   holes: [
     { hole: 1, par: 4, hcp: 9, yards: 370 },
     { hole: 2, par: 4, hcp: 11, yards: 385 },
