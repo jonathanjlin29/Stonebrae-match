@@ -354,6 +354,8 @@ export function NewRoundWizard({
             <Plus className="h-4 w-4" /> Add another match
           </Button>
 
+          <PlayerMatchups players={selectedPlayers} matches={matches} />
+
           {error && <p className="mt-3 text-sm text-[var(--color-danger)]">{error}</p>}
 
           <div className="mt-5 flex gap-2">
@@ -367,6 +369,74 @@ export function NewRoundWizard({
         </div>
       )}
     </div>
+  )
+}
+
+function PlayerMatchups({ players, matches }: { players: Player[]; matches: MatchDraft[] }) {
+  const byId = new Map(players.map((p) => [p.id, p]))
+  const names = (ids: number[]) =>
+    ids
+      .map((id) => byId.get(id))
+      .filter((p): p is Player => Boolean(p))
+      .map(shortLabel)
+      .join(" & ")
+
+  const views = players
+    .map((player) => ({
+      player,
+      games: matches
+        .filter((m) => m.teamA.length > 0 && m.teamB.length > 0)
+        .flatMap((m) => {
+          const onA = m.teamA.includes(player.id)
+          const onB = m.teamB.includes(player.id)
+          if (!onA && !onB) return []
+          const mine = onA ? m.teamA : m.teamB
+          const theirs = onA ? m.teamB : m.teamA
+          return [{ us: names(mine), them: names(theirs), nineBet: m.nineBet, overallBet: m.overallBet }]
+        }),
+    }))
+
+  if (matches.length === 0) return null
+
+  return (
+    <section aria-labelledby="player-matchups-heading" className="mt-6">
+      <h2 id="player-matchups-heading" className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+        {"Each player's matches"}
+      </h2>
+      <Card className="ios-list overflow-hidden p-0">
+        {views.map(({ player, games }) => (
+          <div key={player.id} className="flex items-start gap-2.5 px-3 py-2.5">
+            <PlayerAvatar player={player} size="sm" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="truncate text-sm font-semibold">{shortLabel(player)}</p>
+                <span className="shrink-0 text-[11px] text-[var(--color-muted)] tabular">
+                  {games.length} {games.length === 1 ? "match" : "matches"}
+                </span>
+              </div>
+              {games.length === 0 ? (
+                <p className="text-xs text-[var(--color-muted)]">Not in any match yet</p>
+              ) : (
+                <ul className="mt-0.5 flex flex-col gap-0.5">
+                  {games.map((g, idx) => (
+                    <li key={idx} className="flex items-baseline justify-between gap-2 text-xs leading-relaxed">
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium">{g.us}</span>
+                        <span className="text-[var(--color-muted)]"> vs </span>
+                        <span>{g.them}</span>
+                      </span>
+                      <span className="shrink-0 text-[11px] text-[var(--color-muted)] tabular">
+                        ${g.nineBet}/${g.nineBet}/${g.overallBet}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ))}
+      </Card>
+    </section>
   )
 }
 
