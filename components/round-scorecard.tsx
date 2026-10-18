@@ -965,8 +965,8 @@ function MatchCard({
                         { length: latestStartFor(pressChoice) - pressStartRange(pressChoice)[0] + 1 },
                         (_, i) => pressStartRange(pressChoice)[0] + i,
                       ).map((h) => (
-                        <option key={h} value={h}>
-                          {h}
+  <option key={h} value={h}>
+  {h + 1}
                         </option>
                       ))}
                     </select>
