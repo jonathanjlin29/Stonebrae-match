@@ -266,10 +266,10 @@ export function NewRoundWizard({
             Each match is a Nassau: front 9, back 9, and overall — plus any presses during the round.
           </p>
 
-          <div className="grid gap-4">
+          <div className="grid gap-2.5">
             {matches.map((m, i) => (
-              <Card key={i} className="p-4 sm:p-5">
-                <div className="mb-4 flex items-center justify-between">
+              <Card key={i} className="p-2.5 sm:p-3">
+                <div className="mb-2 flex items-center justify-between">
                   <SegmentedControl
                     value={m.type}
                     onChange={(v) => updateMatch(i, { type: v })}
@@ -280,14 +280,14 @@ export function NewRoundWizard({
                   />
                   <button
                     onClick={() => setMatches((ms) => ms.filter((_, idx) => idx !== i))}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-danger)]"
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-danger)]"
                     aria-label="Remove match"
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-1.5">
                   <TeamPicker
                     label="Team A"
                     players={selectedPlayers}
@@ -296,7 +296,7 @@ export function NewRoundWizard({
                     disabledIds={m.teamB}
                     onChange={(ids) => setSide(i, "teamA", ids)}
                   />
-                  <span className="text-center font-display text-xl text-[var(--color-muted)]">vs</span>
+                  <span className="self-center text-center font-display text-sm text-[var(--color-muted)]">vs</span>
                   <TeamPicker
                     label="Team B"
                     players={selectedPlayers}
@@ -307,40 +307,39 @@ export function NewRoundWizard({
                   />
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-[var(--color-surface-2)] p-3">
-                    <p className="mb-1.5 text-xs font-semibold text-[var(--color-muted)]">Bet per nine</p>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-display text-lg text-[var(--color-gold)]">$</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={m.nineBet}
-                        onChange={(e) => {
-                      const raw = e.target.value.replace(/^0+(?=\d)/, "")
-                      updateMatch(i, { nineBet: raw === "" ? 0 : Number(raw) })
-                    }}
-                        className="h-9 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-3 text-center font-display text-lg tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                      />
-                    </div>
-                    <p className="mt-1 text-[11px] text-[var(--color-muted)]">× front / back</p>
-                  </div>
-                  <div className="rounded-2xl bg-[var(--color-surface-2)] p-3">
-                    <p className="mb-1.5 text-xs font-semibold text-[var(--color-muted)]">Bet overall</p>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-display text-lg text-[var(--color-gold)]">$</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={m.overallBet}
-                        onChange={(e) => {
-                      const raw = e.target.value.replace(/^0+(?=\d)/, "")
-                      updateMatch(i, { overallBet: raw === "" ? 0 : Number(raw) })
-                    }}
-                        className="h-9 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-3 text-center font-display text-lg tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                      />
-                    </div>
-                  </div>
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <label className="flex items-center gap-1.5 rounded-xl bg-[var(--color-surface-2)] py-1 pl-2.5 pr-1">
+                    <span className="shrink-0 text-xs font-semibold text-[var(--color-muted)]">Per 9</span>
+                    <span className="font-display text-sm text-[var(--color-gold)]">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      aria-label="Bet per nine (front and back)"
+                      value={m.nineBet}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "")
+                        updateMatch(i, { nineBet: raw === "" ? 0 : Number(raw) })
+                      }}
+                      className="h-7 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-2 text-center font-display text-base tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1.5 rounded-xl bg-[var(--color-surface-2)] py-1 pl-2.5 pr-1">
+                    <span className="shrink-0 text-xs font-semibold text-[var(--color-muted)]">Overall</span>
+                    <span className="font-display text-sm text-[var(--color-gold)]">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      aria-label="Bet overall"
+                      value={m.overallBet}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "")
+                        updateMatch(i, { overallBet: raw === "" ? 0 : Number(raw) })
+                      }}
+                      className="h-7 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-2 text-center font-display text-base tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                    />
+                  </label>
                 </div>
               </Card>
             ))}
@@ -436,9 +435,9 @@ function TeamPicker({
     onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
   }
   return (
-    <div className="rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2">
-      <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
+  <div className="min-w-0 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-1.5">
+  <p className="mb-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+  <div className="flex flex-wrap gap-1">
         {players.map((p) => {
           const on = value.includes(p.id)
           const disabled = disabledIds.includes(p.id)
@@ -447,7 +446,7 @@ function TeamPicker({
               key={p.id}
               disabled={disabled}
               onClick={() => toggle(p.id)}
-              className={`rounded-full px-2.5 py-1 text-sm font-medium transition-colors ${
+              className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
                 on
                   ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
                   : disabled
