@@ -269,7 +269,7 @@ export function NewRoundWizard({
           <div className="grid gap-2.5">
             {matches.map((m, i) => (
               <Card key={i} className="p-2">
-                <div className="mb-1.5 flex items-center gap-1.5">
+                <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                   <div role="radiogroup" aria-label="Match type" className="flex shrink-0 rounded-full bg-[var(--color-surface-2)] p-0.5">
                     {(["singles", "team"] as const).map((t) => (
                       <button
@@ -288,7 +288,7 @@ export function NewRoundWizard({
                       </button>
                     ))}
                   </div>
-                  <label className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-[var(--color-surface-2)] py-0.5 pl-2 pr-0.5">
+                  <label className="flex flex-1 items-center gap-1 rounded-full bg-[var(--color-surface-2)] py-0.5 pl-2 pr-0.5">
                     <span className="shrink-0 text-[10px] font-semibold text-[var(--color-muted)]">9s $</span>
                     <input
                       type="number"
@@ -300,10 +300,10 @@ export function NewRoundWizard({
                         const raw = e.target.value.replace(/^0+(?=\d)/, "")
                         updateMatch(i, { nineBet: raw === "" ? 0 : Number(raw) })
                       }}
-                      className="h-5 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-1.5 text-center font-display text-sm tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                      className="h-5 w-full min-w-10 rounded-full bg-[var(--color-surface)] px-1 text-center font-display text-sm tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                     />
                   </label>
-                  <label className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-[var(--color-surface-2)] py-0.5 pl-2 pr-0.5">
+                  <label className="flex flex-1 items-center gap-1 rounded-full bg-[var(--color-surface-2)] py-0.5 pl-2 pr-0.5">
                     <span className="shrink-0 text-[10px] font-semibold text-[var(--color-muted)]">18 $</span>
                     <input
                       type="number"
@@ -315,7 +315,7 @@ export function NewRoundWizard({
                         const raw = e.target.value.replace(/^0+(?=\d)/, "")
                         updateMatch(i, { overallBet: raw === "" ? 0 : Number(raw) })
                       }}
-                      className="h-5 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-1.5 text-center font-display text-sm tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                      className="h-5 w-full min-w-10 rounded-full bg-[var(--color-surface)] px-1 text-center font-display text-sm tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                     />
                   </label>
                   <button
