@@ -8,7 +8,7 @@ import type { Player } from "@/lib/types"
 import type { SavedCourse } from "@/lib/course"
 import { CourseStep } from "./course-step"
 import { playerLabel, shortLabel } from "@/lib/util"
-import { Button, Card, PlayerAvatar, SegmentedControl } from "./ui"
+import { Button, Card, PlayerAvatar } from "./ui"
 
 type MatchDraft = {
   type: "singles" | "team"
@@ -268,49 +268,28 @@ export function NewRoundWizard({
 
           <div className="grid gap-2.5">
             {matches.map((m, i) => (
-              <Card key={i} className="p-2.5 sm:p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <SegmentedControl
-                    value={m.type}
-                    onChange={(v) => updateMatch(i, { type: v })}
-                    options={[
-                      { value: "singles", label: "Singles" },
-                      { value: "team", label: "Team" },
-                    ]}
-                  />
-                  <button
-                    onClick={() => setMatches((ms) => ms.filter((_, idx) => idx !== i))}
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-danger)]"
-                    aria-label="Remove match"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-1.5">
-                  <TeamPicker
-                    label="Team A"
-                    players={selectedPlayers}
-                    value={m.teamA}
-                    single={m.type === "singles"}
-                    disabledIds={m.teamB}
-                    onChange={(ids) => setSide(i, "teamA", ids)}
-                  />
-                  <span className="self-center text-center font-display text-sm text-[var(--color-muted)]">vs</span>
-                  <TeamPicker
-                    label="Team B"
-                    players={selectedPlayers}
-                    value={m.teamB}
-                    single={m.type === "singles"}
-                    disabledIds={m.teamA}
-                    onChange={(ids) => setSide(i, "teamB", ids)}
-                  />
-                </div>
-
-                <div className="mt-2 grid grid-cols-2 gap-1.5">
-                  <label className="flex items-center gap-1.5 rounded-xl bg-[var(--color-surface-2)] py-1 pl-2.5 pr-1">
-                    <span className="shrink-0 text-xs font-semibold text-[var(--color-muted)]">Per 9</span>
-                    <span className="font-display text-sm text-[var(--color-gold)]">$</span>
+              <Card key={i} className="p-2">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <div role="radiogroup" aria-label="Match type" className="flex shrink-0 rounded-full bg-[var(--color-surface-2)] p-0.5">
+                    {(["singles", "team"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        role="radio"
+                        aria-checked={m.type === t}
+                        onClick={() => updateMatch(i, { type: t })}
+                        className={`h-6 rounded-full px-2 text-[11px] font-semibold capitalize transition-colors ${
+                          m.type === t
+                            ? "bg-[var(--color-surface)] text-[var(--color-foreground)]"
+                            : "text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-[var(--color-surface-2)] py-0.5 pl-2 pr-0.5">
+                    <span className="shrink-0 text-[10px] font-semibold text-[var(--color-muted)]">9s $</span>
                     <input
                       type="number"
                       min={0}
@@ -321,12 +300,11 @@ export function NewRoundWizard({
                         const raw = e.target.value.replace(/^0+(?=\d)/, "")
                         updateMatch(i, { nineBet: raw === "" ? 0 : Number(raw) })
                       }}
-                      className="h-7 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-2 text-center font-display text-base tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                      className="h-5 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-1.5 text-center font-display text-sm tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                     />
                   </label>
-                  <label className="flex items-center gap-1.5 rounded-xl bg-[var(--color-surface-2)] py-1 pl-2.5 pr-1">
-                    <span className="shrink-0 text-xs font-semibold text-[var(--color-muted)]">Overall</span>
-                    <span className="font-display text-sm text-[var(--color-gold)]">$</span>
+                  <label className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-[var(--color-surface-2)] py-0.5 pl-2 pr-0.5">
+                    <span className="shrink-0 text-[10px] font-semibold text-[var(--color-muted)]">18 $</span>
                     <input
                       type="number"
                       min={0}
@@ -337,9 +315,36 @@ export function NewRoundWizard({
                         const raw = e.target.value.replace(/^0+(?=\d)/, "")
                         updateMatch(i, { overallBet: raw === "" ? 0 : Number(raw) })
                       }}
-                      className="h-7 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-2 text-center font-display text-base tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                      className="h-5 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-1.5 text-center font-display text-sm tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                     />
                   </label>
+                  <button
+                    onClick={() => setMatches((ms) => ms.filter((_, idx) => idx !== i))}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-danger)]"
+                    aria-label="Remove match"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-1">
+                  <TeamPicker
+                    label="Team A"
+                    players={selectedPlayers}
+                    value={m.teamA}
+                    single={m.type === "singles"}
+                    disabledIds={m.teamB}
+                    onChange={(ids) => setSide(i, "teamA", ids)}
+                  />
+                  <span className="self-center text-center font-display text-[11px] text-[var(--color-muted)]">vs</span>
+                  <TeamPicker
+                    label="Team B"
+                    players={selectedPlayers}
+                    value={m.teamB}
+                    single={m.type === "singles"}
+                    disabledIds={m.teamA}
+                    onChange={(ids) => setSide(i, "teamB", ids)}
+                  />
                 </div>
               </Card>
             ))}
@@ -435,9 +440,8 @@ function TeamPicker({
     onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
   }
   return (
-  <div className="min-w-0 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-1.5">
-  <p className="mb-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-  <div className="flex flex-wrap gap-1">
+    <div role="group" aria-label={label} className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-1">
+      <div className="flex flex-wrap gap-0.5">
         {players.map((p) => {
           const on = value.includes(p.id)
           const disabled = disabledIds.includes(p.id)
@@ -446,7 +450,7 @@ function TeamPicker({
               key={p.id}
               disabled={disabled}
               onClick={() => toggle(p.id)}
-              className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
+              className={`rounded-full px-1.5 py-px text-[10px] font-medium leading-4 transition-colors ${
                 on
                   ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
                   : disabled
