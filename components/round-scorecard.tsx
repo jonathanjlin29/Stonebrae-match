@@ -47,6 +47,7 @@ export function RoundScorecard({
   const [, start] = useTransition()
   const [scores, setScores] = useState<Scores>(() => clone(round.scores))
   const [matches, setMatches] = useState<Match[]>(() => round.matches)
+  const [addingMatch, setAddingMatch] = useState(false)
   const [celebration, setCelebration] = useState<Celebration | null>(null)
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [completing, setCompleting] = useState(false)
@@ -206,7 +207,12 @@ export function RoundScorecard({
     if (startHole == null) {
       return { ok: false, reason: "There are no holes left to press on this segment." }
     }
-    const status = computeSegmentStatus(match, scores, players, start_, end, courseHoles)
+    // Who pressed is the side that was down going into the press's first hole, so retroactive
+    // presses only look at holes played before the chosen start.
+    const status =
+      startHole > start_
+        ? computeSegmentStatus(match, scores, players, start_, startHole - 1, courseHoles)
+        : { holes: [], finalStatusA: 0 }
     const viewerSide: "A" | "B" = currentPlayerId != null && match.teamB.includes(currentPlayerId) ? "B" : "A"
     const initiatedBy: "A" | "B" =
       status.holes.length > 0 && status.finalStatusA !== 0 ? (status.finalStatusA > 0 ? "B" : "A") : viewerSide
@@ -401,6 +407,43 @@ export function RoundScorecard({
             />
           ))}
         </div>
+        {canEditMatches && isActive && (
+          <div className="mt-3">
+            {addingMatch ? (
+              <Card className="p-4">
+                <MatchEditor
+                  mode="create"
+                  roundId={round.id}
+                  match={{
+                    id: 0,
+                    roundId: round.id,
+                    type: "singles",
+                    teamA: [],
+                    teamB: [],
+                    nineBet: matches[0]?.nineBet ?? 5,
+                    backBet: matches[0]?.backBet ?? matches[0]?.nineBet ?? 5,
+                    overallBet: matches[0]?.overallBet ?? 5,
+                    straightUp: false,
+                    presses: [],
+                  } as unknown as Match}
+                  players={players}
+                  onSaved={(created) => {
+                    setMatches((prev) => [...prev, created])
+                    setMatchView("cards")
+                  }}
+                  onClose={() => setAddingMatch(false)}
+                />
+              </Card>
+            ) : (
+              <button
+                onClick={() => setAddingMatch(true)}
+                className="w-full rounded-full border border-dashed border-[var(--color-border)] px-4 py-2.5 text-sm font-semibold text-[var(--color-muted)] transition-colors hover:border-[var(--color-primary)] hover:text-[var(--color-foreground)]"
+              >
+                + Add match
+              </button>
+            )}
+          </div>
+        )}
       </section>
 
       <Card className={`mb-6 overflow-x-auto p-0 ${tab === "scorecard" ? "hidden sm:block" : "hidden"}`}>
@@ -718,6 +761,7 @@ function MatchCard({
   const [pressOpen, setPressOpen] = useState(false)
   const [pressChoice, setPressChoice] = useState<PressChoice | null>(null)
   const [pressAmount, setPressAmount] = useState("")
+  const [pressStart, setPressStart] = useState<number | null>(null)
   const [pressError, setPressError] = useState<string | null>(null)
 
   const byId = Object.fromEntries(players.map((p) => [p.id, p]))
@@ -748,9 +792,13 @@ function MatchCard({
       ? "border-[var(--color-primary)]/45 bg-[var(--color-primary)]/10"
       : "border-[var(--color-match-square)]/45 bg-[var(--color-match-square)]/10"
 
-  const pressable = (["front", "back", "overall"] as const).filter(
-    (s) => isActive && nextUnplayedHole(match, scores, ...pressStartRange(s)) != null,
-  )
+  // Every segment stays pressable during an active round so a press can be added retroactively
+  // to any hole that's already been played (or the next one up).
+  const pressable = (["front", "back", "overall"] as const).filter(() => isActive)
+  const latestStartFor = (s: "front" | "back" | "overall") => {
+    const [lo, hi] = pressStartRange(s)
+    return nextUnplayedHole(match, scores, lo, hi) ?? hi
+  }
   const choices: PressChoice[] = [
     ...pressable,
     ...(isActive && nextUnplayedHole(match, scores, ...pressStartRange("back")) === ALOHA_HOLE ? (["aloha"] as const) : []),
@@ -762,6 +810,7 @@ function MatchCard({
   function openPress(choice: PressChoice) {
     setPressChoice(choice)
     setPressAmount(String(choice === "aloha" ? match.overallBet : defaultPressAmount(match, choice)))
+    setPressStart(choice === "aloha" ? ALOHA_HOLE : latestStartFor(choice))
     setPressError(null)
   }
 
@@ -769,6 +818,7 @@ function MatchCard({
     setPressOpen(false)
     setPressChoice(null)
     setPressAmount("")
+    setPressStart(null)
     setPressError(null)
   }
 
@@ -776,7 +826,9 @@ function MatchCard({
     if (!pressChoice) return
     const amount = Math.round(Math.max(0, Number(pressAmount) || 0))
     const result =
-      pressChoice === "aloha" ? onPress(match, "back", amount, ALOHA_HOLE) : onPress(match, pressChoice, amount)
+      pressChoice === "aloha"
+        ? onPress(match, "back", amount, ALOHA_HOLE)
+        : onPress(match, pressChoice, amount, pressStart ?? latestStartFor(pressChoice))
     if (result.ok) {
       closePress()
     } else {
@@ -900,6 +952,26 @@ function MatchCard({
                   onChange={(e) => setPressAmount(e.target.value)}
                   className="h-9 w-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-center font-semibold tabular outline-none focus:border-[var(--color-primary)]"
                 />
+                {pressChoice !== "aloha" && (
+                  <label className="flex items-center gap-1.5">
+                    <span className="text-[var(--color-muted)]">from hole</span>
+                    <select
+                      value={pressStart ?? latestStartFor(pressChoice)}
+                      onChange={(e) => setPressStart(Number(e.target.value))}
+                      aria-label="Press starting hole"
+                      className="h-9 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 font-semibold tabular outline-none focus:border-[var(--color-primary)]"
+                    >
+                      {Array.from(
+                        { length: latestStartFor(pressChoice) - pressStartRange(pressChoice)[0] + 1 },
+                        (_, i) => pressStartRange(pressChoice)[0] + i,
+                      ).map((h) => (
+  <option key={h} value={h}>
+  {h + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <button
                   onClick={confirmPress}
                   className="rounded-full bg-[var(--color-gold)] px-4 py-2 font-bold text-[#2a1e00] transition-transform active:scale-95 hover:brightness-105"

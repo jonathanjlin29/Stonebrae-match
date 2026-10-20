@@ -8,7 +8,7 @@ import type { Player } from "@/lib/types"
 import type { SavedCourse } from "@/lib/course"
 import { CourseStep } from "./course-step"
 import { playerLabel, shortLabel } from "@/lib/util"
-import { Button, Card, PlayerAvatar, SegmentedControl } from "./ui"
+import { Button, Card, PlayerAvatar } from "./ui"
 
 type MatchDraft = {
   type: "singles" | "team"
@@ -266,28 +266,68 @@ export function NewRoundWizard({
             Each match is a Nassau: front 9, back 9, and overall — plus any presses during the round.
           </p>
 
-          <div className="grid gap-4">
+          <div className="grid gap-2.5">
             {matches.map((m, i) => (
-              <Card key={i} className="p-4 sm:p-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <SegmentedControl
-                    value={m.type}
-                    onChange={(v) => updateMatch(i, { type: v })}
-                    options={[
-                      { value: "singles", label: "Singles" },
-                      { value: "team", label: "Team" },
-                    ]}
-                  />
+              <Card key={i} className="p-2">
+                <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                  <div role="radiogroup" aria-label="Match type" className="flex shrink-0 rounded-full bg-[var(--color-surface-2)] p-0.5">
+                    {(["singles", "team"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        role="radio"
+                        aria-checked={m.type === t}
+                        onClick={() => updateMatch(i, { type: t })}
+                        className={`h-6 rounded-full px-2 text-[11px] font-semibold capitalize transition-colors ${
+                          m.type === t
+                            ? "bg-[var(--color-surface)] text-[var(--color-foreground)]"
+                            : "text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="flex flex-1 items-center gap-1 rounded-full bg-[var(--color-surface-2)] py-0.5 pl-2 pr-0.5">
+                    <span className="shrink-0 text-[10px] font-semibold text-[var(--color-muted)]">9s $</span>
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      aria-label="Bet per nine (front and back)"
+                      value={m.nineBet}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "")
+                        updateMatch(i, { nineBet: raw === "" ? 0 : Number(raw) })
+                      }}
+                      className="h-5 w-full min-w-10 rounded-full bg-[var(--color-surface)] px-1 text-center font-display text-sm tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                    />
+                  </label>
+                  <label className="flex flex-1 items-center gap-1 rounded-full bg-[var(--color-surface-2)] py-0.5 pl-2 pr-0.5">
+                    <span className="shrink-0 text-[10px] font-semibold text-[var(--color-muted)]">18 $</span>
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      aria-label="Bet overall"
+                      value={m.overallBet}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, "")
+                        updateMatch(i, { overallBet: raw === "" ? 0 : Number(raw) })
+                      }}
+                      className="h-5 w-full min-w-10 rounded-full bg-[var(--color-surface)] px-1 text-center font-display text-sm tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                    />
+                  </label>
                   <button
                     onClick={() => setMatches((ms) => ms.filter((_, idx) => idx !== i))}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-danger)]"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-danger)]"
                     aria-label="Remove match"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-1">
                   <TeamPicker
                     label="Team A"
                     players={selectedPlayers}
@@ -296,7 +336,7 @@ export function NewRoundWizard({
                     disabledIds={m.teamB}
                     onChange={(ids) => setSide(i, "teamA", ids)}
                   />
-                  <span className="text-center font-display text-xl text-[var(--color-muted)]">vs</span>
+                  <span className="self-center text-center font-display text-[11px] text-[var(--color-muted)]">vs</span>
                   <TeamPicker
                     label="Team B"
                     players={selectedPlayers}
@@ -306,42 +346,6 @@ export function NewRoundWizard({
                     onChange={(ids) => setSide(i, "teamB", ids)}
                   />
                 </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-[var(--color-surface-2)] p-3">
-                    <p className="mb-1.5 text-xs font-semibold text-[var(--color-muted)]">Bet per nine</p>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-display text-lg text-[var(--color-gold)]">$</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={m.nineBet}
-                        onChange={(e) => {
-                      const raw = e.target.value.replace(/^0+(?=\d)/, "")
-                      updateMatch(i, { nineBet: raw === "" ? 0 : Number(raw) })
-                    }}
-                        className="h-9 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-3 text-center font-display text-lg tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                      />
-                    </div>
-                    <p className="mt-1 text-[11px] text-[var(--color-muted)]">× front / back</p>
-                  </div>
-                  <div className="rounded-2xl bg-[var(--color-surface-2)] p-3">
-                    <p className="mb-1.5 text-xs font-semibold text-[var(--color-muted)]">Bet overall</p>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-display text-lg text-[var(--color-gold)]">$</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={m.overallBet}
-                        onChange={(e) => {
-                      const raw = e.target.value.replace(/^0+(?=\d)/, "")
-                      updateMatch(i, { overallBet: raw === "" ? 0 : Number(raw) })
-                    }}
-                        className="h-9 w-full min-w-0 rounded-full bg-[var(--color-surface)] px-3 text-center font-display text-lg tabular outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                      />
-                    </div>
-                  </div>
-                </div>
               </Card>
             ))}
           </div>
@@ -349,6 +353,8 @@ export function NewRoundWizard({
           <Button variant="outline" className="mt-4 w-full" onClick={addMatch}>
             <Plus className="h-4 w-4" /> Add another match
           </Button>
+
+          <PlayerMatchups players={selectedPlayers} matches={matches} />
 
           {error && <p className="mt-3 text-sm text-[var(--color-danger)]">{error}</p>}
 
@@ -363,6 +369,74 @@ export function NewRoundWizard({
         </div>
       )}
     </div>
+  )
+}
+
+function PlayerMatchups({ players, matches }: { players: Player[]; matches: MatchDraft[] }) {
+  const byId = new Map(players.map((p) => [p.id, p]))
+  const names = (ids: number[]) =>
+    ids
+      .map((id) => byId.get(id))
+      .filter((p): p is Player => Boolean(p))
+      .map(shortLabel)
+      .join(" & ")
+
+  const views = players
+    .map((player) => ({
+      player,
+      games: matches
+        .filter((m) => m.teamA.length > 0 && m.teamB.length > 0)
+        .flatMap((m) => {
+          const onA = m.teamA.includes(player.id)
+          const onB = m.teamB.includes(player.id)
+          if (!onA && !onB) return []
+          const mine = onA ? m.teamA : m.teamB
+          const theirs = onA ? m.teamB : m.teamA
+          return [{ us: names(mine), them: names(theirs), nineBet: m.nineBet, overallBet: m.overallBet }]
+        }),
+    }))
+
+  if (matches.length === 0) return null
+
+  return (
+    <section aria-labelledby="player-matchups-heading" className="mt-6">
+      <h2 id="player-matchups-heading" className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+        {"Each player's matches"}
+      </h2>
+      <Card className="ios-list overflow-hidden p-0">
+        {views.map(({ player, games }) => (
+          <div key={player.id} className="flex items-start gap-2.5 px-3 py-2.5">
+            <PlayerAvatar player={player} size="sm" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="truncate text-sm font-semibold">{shortLabel(player)}</p>
+                <span className="shrink-0 text-[11px] text-[var(--color-muted)] tabular">
+                  {games.length} {games.length === 1 ? "match" : "matches"}
+                </span>
+              </div>
+              {games.length === 0 ? (
+                <p className="text-xs text-[var(--color-muted)]">Not in any match yet</p>
+              ) : (
+                <ul className="mt-0.5 flex flex-col gap-0.5">
+                  {games.map((g, idx) => (
+                    <li key={idx} className="flex items-baseline justify-between gap-2 text-xs leading-relaxed">
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium">{g.us}</span>
+                        <span className="text-[var(--color-muted)]"> vs </span>
+                        <span>{g.them}</span>
+                      </span>
+                      <span className="shrink-0 text-[11px] text-[var(--color-muted)] tabular">
+                        ${g.nineBet}/${g.nineBet}/${g.overallBet}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ))}
+      </Card>
+    </section>
   )
 }
 
@@ -436,9 +510,8 @@ function TeamPicker({
     onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
   }
   return (
-    <div className="rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2">
-      <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
+    <div role="group" aria-label={label} className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-1">
+      <div className="flex flex-wrap gap-0.5">
         {players.map((p) => {
           const on = value.includes(p.id)
           const disabled = disabledIds.includes(p.id)
@@ -447,7 +520,7 @@ function TeamPicker({
               key={p.id}
               disabled={disabled}
               onClick={() => toggle(p.id)}
-              className={`rounded-full px-2.5 py-1 text-sm font-medium transition-colors ${
+              className={`rounded-full px-1.5 py-px text-[10px] font-medium leading-4 transition-colors ${
                 on
                   ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
                   : disabled

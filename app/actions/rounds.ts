@@ -241,6 +241,34 @@ export async function updateMatch(
   return { ok: true }
 }
 
+export async function createMatch(
+  roundId: number,
+  config: MatchConfig,
+): Promise<{ ok: true; matchId: number } | { ok: false; error: string }> {
+  if (!(await canEditRounds())) return { ok: false, error: "Sign in to add matches." }
+  const teamA = [...new Set(config.teamA.map(Number))]
+  const teamB = [...new Set(config.teamB.map(Number))]
+  if (teamA.length === 0 || teamB.length === 0) return { ok: false, error: "Both sides need at least one player." }
+  if (teamA.some((id) => teamB.includes(id))) return { ok: false, error: "A player can't be on both sides." }
+
+  const roster = await sql`SELECT player_id FROM round_players WHERE round_id = ${roundId}`
+  const inRound = new Set(roster.map((r: any) => r.player_id as number))
+  if ([...teamA, ...teamB].some((id) => !inRound.has(id))) return { ok: false, error: "Players must be in this round." }
+
+  const type = teamA.length === 1 && teamB.length === 1 ? "singles" : "team"
+  const nineBet = cleanBet(config.nineBet)
+  const straightUp = await straightUpFor(teamA, teamB, config.straightUp)
+  const rows = await sql`
+    INSERT INTO matches (round_id, type, team_a, team_b, nine_bet, back_bet, overall_bet, straight_up)
+    VALUES (${roundId}, ${type}, ${JSON.stringify(teamA)}, ${JSON.stringify(teamB)}, ${nineBet}, ${cleanBet(config.backBet, nineBet)}, ${cleanBet(config.overallBet)}, ${straightUp})
+    RETURNING id`
+
+  await recomputeRoundMoney(roundId)
+  revalidatePath(`/round/${roundId}`)
+  revalidatePath("/leaderboard")
+  return { ok: true, matchId: rows[0].id as number }
+}
+
 export async function deleteMatch(roundId: number, matchId: number): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!(await canEditRounds())) return { ok: false, error: "Sign in to edit matches." }
   await sql`DELETE FROM matches WHERE id = ${matchId} AND round_id = ${roundId}`

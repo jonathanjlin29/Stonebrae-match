@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { Plus, Trash2, X } from "lucide-react"
-import { deleteMatchOffline, updateMatchOffline } from "@/lib/offline-actions"
+import { createMatchOffline, deleteMatchOffline, updateMatchOffline } from "@/lib/offline-actions"
 import { isStraightUpMatchup } from "@/lib/match-rules"
 import { backBetOf, defaultPressAmount } from "@/lib/nassau"
 import type { Match, Press } from "@/lib/types"
@@ -23,14 +23,17 @@ export function MatchEditor({
   onSaved,
   onDeleted,
   onClose,
+  mode = "edit",
 }: {
   roundId: number
   match: Match
   players: EditorPlayer[]
   onSaved: (match: Match) => void
-  onDeleted: (matchId: number) => void
+  onDeleted?: (matchId: number) => void
   onClose: () => void
+  mode?: "edit" | "create"
 }) {
+  const isCreate = mode === "create"
   const [sides, setSides] = useState<Record<number, Side>>(() =>
     Object.fromEntries(
       players.map((p) => [p.id, match.teamA.includes(p.id) ? "A" : match.teamB.includes(p.id) ? "B" : null]),
@@ -89,6 +92,17 @@ export function MatchEditor({
       presses: presses.map((p) => ({ ...p, amount: Math.max(0, Math.round(p.amount || 0)) })),
     }
     start(async () => {
+      if (isCreate) {
+        const { presses: _ignored, ...config } = edit
+        const created = await createMatchOffline(roundId, config)
+        if (!created.ok) {
+          setError(created.error)
+          return
+        }
+        onSaved({ ...match, ...edit, presses: [], id: created.matchId, roundId })
+        onClose()
+        return
+      }
       const res = await updateMatchOffline(roundId, match.id, edit)
       if (!res.ok) {
         setError(res.error)
@@ -106,14 +120,14 @@ export function MatchEditor({
         setError(res.error)
         return
       }
-      onDeleted(match.id)
+      onDeleted?.(match.id)
     })
   }
 
   return (
-    <div className="mt-4 flex flex-col gap-4 border-t border-[var(--color-border)] pt-4">
+    <div className={`flex flex-col gap-4 ${isCreate ? "" : "mt-4 border-t border-[var(--color-border)] pt-4"}`}>
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Edit match</h3>
+        <h3 className="text-sm font-semibold">{isCreate ? "New match" : "Edit match"}</h3>
         <button
           onClick={onClose}
           aria-label="Close editor"
@@ -185,6 +199,7 @@ export function MatchEditor({
         </span>
       </label>
 
+      {!isCreate && (
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
           Presses ({presses.length})
@@ -266,6 +281,7 @@ export function MatchEditor({
           ))}
         </div>
       </fieldset>
+      )}
 
       {error && (
         <p role="alert" className="text-sm font-medium text-[var(--color-danger)]">
@@ -274,7 +290,9 @@ export function MatchEditor({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {confirmDelete ? (
+        {isCreate ? (
+          <span />
+        ) : confirmDelete ? (
           <div className="flex items-center gap-1.5">
             <Button variant="danger" onClick={remove} disabled={pending} className="h-9 px-3 text-sm">
               <Trash2 className="h-4 w-4" /> Delete match
@@ -296,7 +314,7 @@ export function MatchEditor({
             Cancel
           </button>
           <Button onClick={save} disabled={pending} className="h-9 px-4 text-sm">
-            {pending ? "Saving…" : "Save changes"}
+            {pending ? "Saving…" : isCreate ? "Add match" : "Save changes"}
           </Button>
         </div>
       </div>

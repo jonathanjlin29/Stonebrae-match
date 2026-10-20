@@ -3,6 +3,7 @@
 import {
   addPress,
   completeRound,
+  createMatch,
   createRound,
   deleteMatch,
   saveScore,
@@ -155,6 +156,17 @@ export async function updateMatchOffline(roundId: number, matchId: number, edit:
   }
   await enqueueMutation("updateMatch", { roundId: resolvedRoundId, matchId: resolvedMatchId, edit })
   return { ok: true as const, queued: true }
+}
+
+export async function createMatchOffline(
+  roundId: number,
+  config: MatchConfig,
+): Promise<{ ok: true; matchId: number } | { ok: false; error: string }> {
+  const resolvedRoundId = await resolveMaybeTempId(roundId)
+  if (resolvedRoundId >= 0 && navigator.onLine) return createMatch(resolvedRoundId, config)
+  const tempId = -Date.now()
+  await enqueueMutation("createMatch", { roundId: resolvedRoundId, config }, String(tempId))
+  return { ok: true, matchId: tempId }
 }
 
 export async function deleteMatchOffline(roundId: number, matchId: number) {

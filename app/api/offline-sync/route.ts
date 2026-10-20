@@ -3,6 +3,7 @@ import {
   saveScore,
   addPress,
   completeRound,
+  createMatch,
   createRound,
   deleteMatch,
   updateMatch,
@@ -18,6 +19,7 @@ const handlers = {
     addPress(payload.roundId, payload.matchId, payload.scope, payload.startHole, payload.initiatedBy, payload.amount),
   updatePressAmount: (payload: any) =>
     updatePressAmount(payload.roundId, payload.matchId, payload.pressId, payload.amount),
+  createMatch: (payload: any) => createMatch(payload.roundId, payload.config),
   updateMatch: (payload: any) => updateMatch(payload.roundId, payload.matchId, payload.edit),
   deleteMatch: (payload: any) => deleteMatch(payload.roundId, payload.matchId),
   completeRound: (payload: any) => completeRound(payload.roundId),

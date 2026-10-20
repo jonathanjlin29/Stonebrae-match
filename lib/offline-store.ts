@@ -110,8 +110,11 @@ export async function replayQueuedMutations() {
       await saveIdMapping(mutation.id, result.player.id)
     }
     if (mutation.action === "createRound" && result?.ok && result.roundId != null) {
-      await saveIdMapping(mutation.id, result.roundId)
-    }
+    await saveIdMapping(mutation.id, result.roundId)
+  }
+  if (mutation.action === "createMatch" && result?.ok && result.matchId != null) {
+    await saveIdMapping(mutation.id, result.matchId)
+  }
     await removeQueuedMutation(mutation.id)
   }
 }
